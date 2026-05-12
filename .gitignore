@@ -10,6 +10,7 @@ server/data/*.db-shm
 # Environment / secrets
 .env
 .env.local
+.claude
 
 # Logs
 *.log
