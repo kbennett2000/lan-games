@@ -1,0 +1,201 @@
+{
+  "_comment": "Chance and Community Chest card decks. Supported actions: advance_to, advance_to_nearest, collect, pay, pay_each_player, collect_from_each_player, go_to_jail, get_out_of_jail, go_back, repairs, bank_error, birthday.",
+
+  "chance": [
+    {
+      "id": "ch_advance_go",
+      "text": "Advance to Go. Collect $200.",
+      "action": "advance_to",
+      "data": { "position": 0, "collectGoSalary": true }
+    },
+    {
+      "id": "ch_advance_illinois",
+      "text": "Advance to Illinois Avenue. If you pass Go, collect $200.",
+      "action": "advance_to",
+      "data": { "position": 24, "collectGoSalary": true }
+    },
+    {
+      "id": "ch_advance_stcharles",
+      "text": "Advance to St. Charles Place. If you pass Go, collect $200.",
+      "action": "advance_to",
+      "data": { "position": 11, "collectGoSalary": true }
+    },
+    {
+      "id": "ch_nearest_utility",
+      "text": "Advance token to nearest Utility. If unowned, you may buy it from the Bank. If owned, throw dice and pay owner 10 times the amount thrown.",
+      "action": "advance_to_nearest",
+      "data": { "type": "utility", "collectGoSalary": true, "rentMultiplier": 10 }
+    },
+    {
+      "id": "ch_nearest_railroad_1",
+      "text": "Advance token to the nearest Railroad and pay owner twice the rental to which they are otherwise entitled. If Railroad is unowned, you may buy it from the Bank.",
+      "action": "advance_to_nearest",
+      "data": { "type": "railroad", "collectGoSalary": true, "rentMultiplier": 2 }
+    },
+    {
+      "id": "ch_nearest_railroad_2",
+      "text": "Advance token to the nearest Railroad and pay owner twice the rental to which they are otherwise entitled. If Railroad is unowned, you may buy it from the Bank.",
+      "action": "advance_to_nearest",
+      "data": { "type": "railroad", "collectGoSalary": true, "rentMultiplier": 2 }
+    },
+    {
+      "id": "ch_bank_dividend",
+      "text": "Bank pays you dividend of $50.",
+      "action": "collect",
+      "data": { "amount": 50, "source": "bank" }
+    },
+    {
+      "id": "ch_get_out_jail",
+      "text": "Get Out of Jail Free. This card may be kept until needed or traded.",
+      "action": "get_out_of_jail",
+      "data": {}
+    },
+    {
+      "id": "ch_go_back_3",
+      "text": "Go Back 3 Spaces.",
+      "action": "go_back",
+      "data": { "spaces": 3 }
+    },
+    {
+      "id": "ch_go_to_jail",
+      "text": "Go to Jail. Go directly to Jail. Do not pass Go. Do not collect $200.",
+      "action": "go_to_jail",
+      "data": {}
+    },
+    {
+      "id": "ch_repairs",
+      "text": "Make general repairs on all your property. For each house pay $25. For each hotel pay $100.",
+      "action": "repairs",
+      "data": { "houseCost": 25, "hotelCost": 100 }
+    },
+    {
+      "id": "ch_poor_tax",
+      "text": "Pay poor tax of $15.",
+      "action": "pay",
+      "data": { "amount": 15, "recipient": "bank" }
+    },
+    {
+      "id": "ch_reading_railroad",
+      "text": "Take a trip to Reading Railroad. If you pass Go, collect $200.",
+      "action": "advance_to",
+      "data": { "position": 5, "collectGoSalary": true }
+    },
+    {
+      "id": "ch_boardwalk",
+      "text": "Take a walk on the Boardwalk. Advance token to Boardwalk.",
+      "action": "advance_to",
+      "data": { "position": 39, "collectGoSalary": false }
+    },
+    {
+      "id": "ch_chairman",
+      "text": "You have been elected Chairman of the Board. Pay each player $50.",
+      "action": "pay_each_player",
+      "data": { "amount": 50 }
+    },
+    {
+      "id": "ch_building_loan",
+      "text": "Your building and loan matures. Collect $150.",
+      "action": "collect",
+      "data": { "amount": 150, "source": "bank" }
+    }
+  ],
+
+  "communityChest": [
+    {
+      "id": "cc_advance_go",
+      "text": "Advance to Go. Collect $200.",
+      "action": "advance_to",
+      "data": { "position": 0, "collectGoSalary": true }
+    },
+    {
+      "id": "cc_bank_error",
+      "text": "Bank error in your favor. Collect $200.",
+      "action": "collect",
+      "data": { "amount": 200, "source": "bank" }
+    },
+    {
+      "id": "cc_doctors_fees",
+      "text": "Doctor's fees. Pay $50.",
+      "action": "pay",
+      "data": { "amount": 50, "recipient": "bank" }
+    },
+    {
+      "id": "cc_stock_sale",
+      "text": "From sale of stock you get $50.",
+      "action": "collect",
+      "data": { "amount": 50, "source": "bank" }
+    },
+    {
+      "id": "cc_get_out_jail",
+      "text": "Get Out of Jail Free. This card may be kept until needed or traded.",
+      "action": "get_out_of_jail",
+      "data": {}
+    },
+    {
+      "id": "cc_go_to_jail",
+      "text": "Go to Jail. Go directly to Jail. Do not pass Go. Do not collect $200.",
+      "action": "go_to_jail",
+      "data": {}
+    },
+    {
+      "id": "cc_grand_opera",
+      "text": "Grand Opera Night. Collect $50 from every player.",
+      "action": "collect_from_each_player",
+      "data": { "amount": 50 }
+    },
+    {
+      "id": "cc_holiday_fund",
+      "text": "Holiday Fund matures. Receive $100.",
+      "action": "collect",
+      "data": { "amount": 100, "source": "bank" }
+    },
+    {
+      "id": "cc_tax_refund",
+      "text": "Income Tax refund. Collect $20.",
+      "action": "collect",
+      "data": { "amount": 20, "source": "bank" }
+    },
+    {
+      "id": "cc_birthday",
+      "text": "It is your birthday. Collect $10 from every player.",
+      "action": "collect_from_each_player",
+      "data": { "amount": 10 }
+    },
+    {
+      "id": "cc_life_insurance",
+      "text": "Life insurance matures. Collect $100.",
+      "action": "collect",
+      "data": { "amount": 100, "source": "bank" }
+    },
+    {
+      "id": "cc_hospital_fees",
+      "text": "Pay hospital fees of $100.",
+      "action": "pay",
+      "data": { "amount": 100, "recipient": "bank" }
+    },
+    {
+      "id": "cc_school_fees",
+      "text": "School fees. Pay $150.",
+      "action": "pay",
+      "data": { "amount": 150, "recipient": "bank" }
+    },
+    {
+      "id": "cc_consultancy",
+      "text": "Receive $25 consultancy fee.",
+      "action": "collect",
+      "data": { "amount": 25, "source": "bank" }
+    },
+    {
+      "id": "cc_street_repairs",
+      "text": "You are assessed for street repairs. $40 per house. $115 per hotel.",
+      "action": "repairs",
+      "data": { "houseCost": 40, "hotelCost": 115 }
+    },
+    {
+      "id": "cc_beauty_contest",
+      "text": "You have won second prize in a beauty contest. Collect $10.",
+      "action": "collect",
+      "data": { "amount": 10, "source": "bank" }
+    }
+  ]
+}

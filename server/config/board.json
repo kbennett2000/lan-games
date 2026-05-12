@@ -1,0 +1,593 @@
+[
+  {
+    "position": 0,
+    "type": "go",
+    "name": "Go",
+    "description": "Collect $200 salary as you pass Go"
+  },
+  {
+    "position": 1,
+    "type": "property",
+    "name": "Mediterranean Avenue",
+    "colorGroup": "brown",
+    "price": 60,
+    "houseCost": 50,
+    "hotelCost": 50,
+    "mortgage": 30,
+    "unmortgageCost": 33,
+    "rent": {
+      "base": 2,
+      "monopoly": 4,
+      "oneHouse": 10,
+      "twoHouses": 30,
+      "threeHouses": 90,
+      "fourHouses": 160,
+      "hotel": 250
+    }
+  },
+  {
+    "position": 2,
+    "type": "community_chest",
+    "name": "Community Chest"
+  },
+  {
+    "position": 3,
+    "type": "property",
+    "name": "Baltic Avenue",
+    "colorGroup": "brown",
+    "price": 60,
+    "houseCost": 50,
+    "hotelCost": 50,
+    "mortgage": 30,
+    "unmortgageCost": 33,
+    "rent": {
+      "base": 4,
+      "monopoly": 8,
+      "oneHouse": 20,
+      "twoHouses": 60,
+      "threeHouses": 180,
+      "fourHouses": 320,
+      "hotel": 450
+    }
+  },
+  {
+    "position": 4,
+    "type": "tax",
+    "name": "Income Tax",
+    "taxType": "income",
+    "amount": 200,
+    "percentOption": 10,
+    "description": "Pay $200 or 10% of your total worth, whichever is less"
+  },
+  {
+    "position": 5,
+    "type": "railroad",
+    "name": "Reading Railroad",
+    "price": 200,
+    "mortgage": 100,
+    "unmortgageCost": 110,
+    "rent": {
+      "owned1": 25,
+      "owned2": 50,
+      "owned3": 100,
+      "owned4": 200
+    }
+  },
+  {
+    "position": 6,
+    "type": "property",
+    "name": "Oriental Avenue",
+    "colorGroup": "lightblue",
+    "price": 100,
+    "houseCost": 50,
+    "hotelCost": 50,
+    "mortgage": 50,
+    "unmortgageCost": 55,
+    "rent": {
+      "base": 6,
+      "monopoly": 12,
+      "oneHouse": 30,
+      "twoHouses": 90,
+      "threeHouses": 270,
+      "fourHouses": 400,
+      "hotel": 550
+    }
+  },
+  {
+    "position": 7,
+    "type": "chance",
+    "name": "Chance"
+  },
+  {
+    "position": 8,
+    "type": "property",
+    "name": "Vermont Avenue",
+    "colorGroup": "lightblue",
+    "price": 100,
+    "houseCost": 50,
+    "hotelCost": 50,
+    "mortgage": 50,
+    "unmortgageCost": 55,
+    "rent": {
+      "base": 6,
+      "monopoly": 12,
+      "oneHouse": 30,
+      "twoHouses": 90,
+      "threeHouses": 270,
+      "fourHouses": 400,
+      "hotel": 550
+    }
+  },
+  {
+    "position": 9,
+    "type": "property",
+    "name": "Connecticut Avenue",
+    "colorGroup": "lightblue",
+    "price": 120,
+    "houseCost": 50,
+    "hotelCost": 50,
+    "mortgage": 60,
+    "unmortgageCost": 66,
+    "rent": {
+      "base": 8,
+      "monopoly": 16,
+      "oneHouse": 40,
+      "twoHouses": 100,
+      "threeHouses": 300,
+      "fourHouses": 450,
+      "hotel": 600
+    }
+  },
+  {
+    "position": 10,
+    "type": "jail",
+    "name": "Jail / Just Visiting",
+    "description": "Visiting players are just passing through. Players sent here must pay $50 or roll doubles to escape."
+  },
+  {
+    "position": 11,
+    "type": "property",
+    "name": "St. Charles Place",
+    "colorGroup": "pink",
+    "price": 140,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 70,
+    "unmortgageCost": 77,
+    "rent": {
+      "base": 10,
+      "monopoly": 20,
+      "oneHouse": 50,
+      "twoHouses": 150,
+      "threeHouses": 450,
+      "fourHouses": 625,
+      "hotel": 750
+    }
+  },
+  {
+    "position": 12,
+    "type": "utility",
+    "name": "Electric Company",
+    "price": 150,
+    "mortgage": 75,
+    "unmortgageCost": 83,
+    "rent": {
+      "multiplier1": 4,
+      "multiplier2": 10
+    }
+  },
+  {
+    "position": 13,
+    "type": "property",
+    "name": "States Avenue",
+    "colorGroup": "pink",
+    "price": 140,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 70,
+    "unmortgageCost": 77,
+    "rent": {
+      "base": 10,
+      "monopoly": 20,
+      "oneHouse": 50,
+      "twoHouses": 150,
+      "threeHouses": 450,
+      "fourHouses": 625,
+      "hotel": 750
+    }
+  },
+  {
+    "position": 14,
+    "type": "property",
+    "name": "Virginia Avenue",
+    "colorGroup": "pink",
+    "price": 160,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 80,
+    "unmortgageCost": 88,
+    "rent": {
+      "base": 12,
+      "monopoly": 24,
+      "oneHouse": 60,
+      "twoHouses": 180,
+      "threeHouses": 500,
+      "fourHouses": 700,
+      "hotel": 900
+    }
+  },
+  {
+    "position": 15,
+    "type": "railroad",
+    "name": "Pennsylvania Railroad",
+    "price": 200,
+    "mortgage": 100,
+    "unmortgageCost": 110,
+    "rent": {
+      "owned1": 25,
+      "owned2": 50,
+      "owned3": 100,
+      "owned4": 200
+    }
+  },
+  {
+    "position": 16,
+    "type": "property",
+    "name": "St. James Place",
+    "colorGroup": "orange",
+    "price": 180,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 90,
+    "unmortgageCost": 99,
+    "rent": {
+      "base": 14,
+      "monopoly": 28,
+      "oneHouse": 70,
+      "twoHouses": 200,
+      "threeHouses": 550,
+      "fourHouses": 750,
+      "hotel": 950
+    }
+  },
+  {
+    "position": 17,
+    "type": "community_chest",
+    "name": "Community Chest"
+  },
+  {
+    "position": 18,
+    "type": "property",
+    "name": "Tennessee Avenue",
+    "colorGroup": "orange",
+    "price": 180,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 90,
+    "unmortgageCost": 99,
+    "rent": {
+      "base": 14,
+      "monopoly": 28,
+      "oneHouse": 70,
+      "twoHouses": 200,
+      "threeHouses": 550,
+      "fourHouses": 750,
+      "hotel": 950
+    }
+  },
+  {
+    "position": 19,
+    "type": "property",
+    "name": "New York Avenue",
+    "colorGroup": "orange",
+    "price": 200,
+    "houseCost": 100,
+    "hotelCost": 100,
+    "mortgage": 100,
+    "unmortgageCost": 110,
+    "rent": {
+      "base": 16,
+      "monopoly": 32,
+      "oneHouse": 80,
+      "twoHouses": 220,
+      "threeHouses": 600,
+      "fourHouses": 800,
+      "hotel": 1000
+    }
+  },
+  {
+    "position": 20,
+    "type": "free_parking",
+    "name": "Free Parking",
+    "description": "Take a break! Nothing happens here (unless the jackpot rule is enabled)."
+  },
+  {
+    "position": 21,
+    "type": "property",
+    "name": "Kentucky Avenue",
+    "colorGroup": "red",
+    "price": 220,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 110,
+    "unmortgageCost": 121,
+    "rent": {
+      "base": 18,
+      "monopoly": 36,
+      "oneHouse": 90,
+      "twoHouses": 250,
+      "threeHouses": 700,
+      "fourHouses": 875,
+      "hotel": 1050
+    }
+  },
+  {
+    "position": 22,
+    "type": "chance",
+    "name": "Chance"
+  },
+  {
+    "position": 23,
+    "type": "property",
+    "name": "Indiana Avenue",
+    "colorGroup": "red",
+    "price": 220,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 110,
+    "unmortgageCost": 121,
+    "rent": {
+      "base": 18,
+      "monopoly": 36,
+      "oneHouse": 90,
+      "twoHouses": 250,
+      "threeHouses": 700,
+      "fourHouses": 875,
+      "hotel": 1050
+    }
+  },
+  {
+    "position": 24,
+    "type": "property",
+    "name": "Illinois Avenue",
+    "colorGroup": "red",
+    "price": 240,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 120,
+    "unmortgageCost": 132,
+    "rent": {
+      "base": 20,
+      "monopoly": 40,
+      "oneHouse": 100,
+      "twoHouses": 300,
+      "threeHouses": 750,
+      "fourHouses": 925,
+      "hotel": 1100
+    }
+  },
+  {
+    "position": 25,
+    "type": "railroad",
+    "name": "B&O Railroad",
+    "price": 200,
+    "mortgage": 100,
+    "unmortgageCost": 110,
+    "rent": {
+      "owned1": 25,
+      "owned2": 50,
+      "owned3": 100,
+      "owned4": 200
+    }
+  },
+  {
+    "position": 26,
+    "type": "property",
+    "name": "Atlantic Avenue",
+    "colorGroup": "yellow",
+    "price": 260,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 130,
+    "unmortgageCost": 143,
+    "rent": {
+      "base": 22,
+      "monopoly": 44,
+      "oneHouse": 110,
+      "twoHouses": 330,
+      "threeHouses": 800,
+      "fourHouses": 975,
+      "hotel": 1150
+    }
+  },
+  {
+    "position": 27,
+    "type": "property",
+    "name": "Ventnor Avenue",
+    "colorGroup": "yellow",
+    "price": 260,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 130,
+    "unmortgageCost": 143,
+    "rent": {
+      "base": 22,
+      "monopoly": 44,
+      "oneHouse": 110,
+      "twoHouses": 330,
+      "threeHouses": 800,
+      "fourHouses": 975,
+      "hotel": 1150
+    }
+  },
+  {
+    "position": 28,
+    "type": "utility",
+    "name": "Water Works",
+    "price": 150,
+    "mortgage": 75,
+    "unmortgageCost": 83,
+    "rent": {
+      "multiplier1": 4,
+      "multiplier2": 10
+    }
+  },
+  {
+    "position": 29,
+    "type": "property",
+    "name": "Marvin Gardens",
+    "colorGroup": "yellow",
+    "price": 280,
+    "houseCost": 150,
+    "hotelCost": 150,
+    "mortgage": 140,
+    "unmortgageCost": 154,
+    "rent": {
+      "base": 24,
+      "monopoly": 48,
+      "oneHouse": 120,
+      "twoHouses": 360,
+      "threeHouses": 850,
+      "fourHouses": 1025,
+      "hotel": 1200
+    }
+  },
+  {
+    "position": 30,
+    "type": "go_to_jail",
+    "name": "Go to Jail",
+    "description": "Go directly to Jail. Do not pass Go. Do not collect $200."
+  },
+  {
+    "position": 31,
+    "type": "property",
+    "name": "Pacific Avenue",
+    "colorGroup": "green",
+    "price": 300,
+    "houseCost": 200,
+    "hotelCost": 200,
+    "mortgage": 150,
+    "unmortgageCost": 165,
+    "rent": {
+      "base": 26,
+      "monopoly": 52,
+      "oneHouse": 130,
+      "twoHouses": 390,
+      "threeHouses": 900,
+      "fourHouses": 1100,
+      "hotel": 1275
+    }
+  },
+  {
+    "position": 32,
+    "type": "property",
+    "name": "North Carolina Avenue",
+    "colorGroup": "green",
+    "price": 300,
+    "houseCost": 200,
+    "hotelCost": 200,
+    "mortgage": 150,
+    "unmortgageCost": 165,
+    "rent": {
+      "base": 26,
+      "monopoly": 52,
+      "oneHouse": 130,
+      "twoHouses": 390,
+      "threeHouses": 900,
+      "fourHouses": 1100,
+      "hotel": 1275
+    }
+  },
+  {
+    "position": 33,
+    "type": "community_chest",
+    "name": "Community Chest"
+  },
+  {
+    "position": 34,
+    "type": "property",
+    "name": "Pennsylvania Avenue",
+    "colorGroup": "green",
+    "price": 320,
+    "houseCost": 200,
+    "hotelCost": 200,
+    "mortgage": 160,
+    "unmortgageCost": 176,
+    "rent": {
+      "base": 28,
+      "monopoly": 56,
+      "oneHouse": 150,
+      "twoHouses": 450,
+      "threeHouses": 1000,
+      "fourHouses": 1200,
+      "hotel": 1400
+    }
+  },
+  {
+    "position": 35,
+    "type": "railroad",
+    "name": "Short Line Railroad",
+    "price": 200,
+    "mortgage": 100,
+    "unmortgageCost": 110,
+    "rent": {
+      "owned1": 25,
+      "owned2": 50,
+      "owned3": 100,
+      "owned4": 200
+    }
+  },
+  {
+    "position": 36,
+    "type": "chance",
+    "name": "Chance"
+  },
+  {
+    "position": 37,
+    "type": "property",
+    "name": "Park Place",
+    "colorGroup": "darkblue",
+    "price": 350,
+    "houseCost": 200,
+    "hotelCost": 200,
+    "mortgage": 175,
+    "unmortgageCost": 193,
+    "rent": {
+      "base": 35,
+      "monopoly": 70,
+      "oneHouse": 175,
+      "twoHouses": 500,
+      "threeHouses": 1100,
+      "fourHouses": 1300,
+      "hotel": 1500
+    }
+  },
+  {
+    "position": 38,
+    "type": "tax",
+    "name": "Luxury Tax",
+    "taxType": "luxury",
+    "amount": 100,
+    "description": "Pay Luxury Tax of $100"
+  },
+  {
+    "position": 39,
+    "type": "property",
+    "name": "Boardwalk",
+    "colorGroup": "darkblue",
+    "price": 400,
+    "houseCost": 200,
+    "hotelCost": 200,
+    "mortgage": 200,
+    "unmortgageCost": 220,
+    "rent": {
+      "base": 50,
+      "monopoly": 100,
+      "oneHouse": 200,
+      "twoHouses": 600,
+      "threeHouses": 1400,
+      "fourHouses": 1700,
+      "hotel": 2000
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(timeout 5 node src/index.js)",
+      "Bash(npm audit *)",
+      "Bash(timeout 4 node src/index.js)"
+    ]
+  }
+}

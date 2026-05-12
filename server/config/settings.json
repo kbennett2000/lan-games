@@ -1,0 +1,48 @@
+{
+  "_comment": "Game settings — edit these values to customize gameplay. All dollar amounts are in Monopoly dollars.",
+
+  "startingMoney": 1500,
+  "goSalary": 200,
+  "incomeTaxAmount": 200,
+  "incomeTaxPercent": 10,
+  "incomeTaxChoice": true,
+  "luxuryTaxAmount": 100,
+
+  "jailFine": 50,
+  "jailMaxTurns": 3,
+  "goToJailPosition": 30,
+  "jailPosition": 10,
+
+  "maxHousesInBank": 32,
+  "maxHotelsInBank": 12,
+
+  "auctionEnabled": true,
+  "auctionMinBid": 1,
+  "auctionTimeoutSeconds": 30,
+
+  "freeParkingJackpot": false,
+
+  "maxPlayers": 8,
+  "minPlayersToStart": 2,
+
+  "allowSpectators": true,
+
+  "tradeEnabled": true,
+
+  "bankruptcyToBank": true,
+
+  "playerColors": [
+    { "id": "red",    "hex": "#e74c3c", "label": "Red"    },
+    { "id": "blue",   "hex": "#2980b9", "label": "Blue"   },
+    { "id": "green",  "hex": "#27ae60", "label": "Green"  },
+    { "id": "yellow", "hex": "#f39c12", "label": "Yellow" },
+    { "id": "purple", "hex": "#8e44ad", "label": "Purple" },
+    { "id": "orange", "hex": "#e67e22", "label": "Orange" },
+    { "id": "pink",   "hex": "#fd79a8", "label": "Pink"   },
+    { "id": "cyan",   "hex": "#00cec9", "label": "Cyan"   }
+  ],
+
+  "playerTokens": [
+    "🎩", "🚂", "🛳️", "🚗", "🐶", "🎲", "⚓", "🎠"
+  ]
+}
