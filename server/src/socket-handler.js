@@ -49,6 +49,39 @@ const database                = require('./database');
 // Track which socket is in which game room: Map<socketId, gameId>
 const socketGameMap = new Map();
 
+// ── turn timeout ──────────────────────────────────────────────────────────────
+// When a player disconnects mid-turn, auto-skip after TURN_TIMEOUT_MS.
+
+const TURN_TIMEOUT_MS = 30_000;
+const turnTimers = new Map(); // key: `${gameId}:${userId}` → timer handle
+
+function scheduleTurnTimeout(io, gameId, userId, username) {
+  const key = `${gameId}:${userId}`;
+  clearTurnTimeout(key);
+  // Notify the room that a countdown has started
+  io.to(gameId).emit('game:turn_warning', { username, secondsRemaining: TURN_TIMEOUT_MS / 1000 });
+  turnTimers.set(key, setTimeout(() => {
+    turnTimers.delete(key);
+    const state = gameManager.getGame(gameId);
+    if (!state || state.status !== 'playing') return;
+    const cur = state.players[state.turnState.currentPlayerIndex];
+    // Only fire if it's still their disconnected turn and not mid-auction
+    if (!cur || cur.userId !== userId || cur.connected) return;
+    if (state.turnState.phase === 'auctioning') return;
+    const result = gameManager.applyAction(gameId, userId, 'skipTurn', {});
+    if (!result.error) {
+      io.to(gameId).emit('game:update', { state: result.state, events: result.events });
+    }
+  }, TURN_TIMEOUT_MS));
+}
+
+function clearTurnTimeout(key) {
+  if (turnTimers.has(key)) {
+    clearTimeout(turnTimers.get(key));
+    turnTimers.delete(key);
+  }
+}
+
 // Stored io reference so REST routes can trigger lobby broadcasts
 let _io = null;
 
@@ -108,6 +141,8 @@ function registerHandlers(io) {
       }
 
       gameManager.setPlayerConnected(gameId, currentUser.sub, true);
+      // Cancel any pending turn-skip timer now that this player is back
+      clearTurnTimeout(`${gameId}:${currentUser.sub}`);
 
       // Always read the freshest state after the mutations above
       const latestState = gameManager.getGame(gameId);
@@ -135,6 +170,7 @@ function registerHandlers(io) {
 
       socket.leave(gameId);
       socketGameMap.delete(socket.id);
+      clearTurnTimeout(`${gameId}:${currentUser.sub}`);
       gameManager.setPlayerConnected(gameId, currentUser.sub, false);
 
       io.to(gameId).emit('game:update', {
@@ -152,10 +188,19 @@ function registerHandlers(io) {
         socketGameMap.delete(socket.id);
         gameManager.setPlayerConnected(gameId, currentUser.sub, false);
 
+        const state = gameManager.getGame(gameId);
         io.to(gameId).emit('game:update', {
-          state:  gameManager.getGame(gameId),
+          state,
           events: [{ type: 'PLAYER_DISCONNECTED', data: { username: currentUser.username }, timestamp: Date.now() }],
         });
+
+        // If this player was in the middle of their turn, start the skip timer
+        if (state && state.status === 'playing' && state.turnState) {
+          const cur = state.players[state.turnState.currentPlayerIndex];
+          if (cur && cur.userId === currentUser.sub && state.turnState.phase !== 'auctioning') {
+            scheduleTurnTimeout(io, gameId, currentUser.sub, currentUser.username);
+          }
+        }
       }
     });
 

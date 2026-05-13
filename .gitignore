@@ -11,6 +11,7 @@ server/data/*.db-shm
 .env
 .env.local
 .claude
+notes.txt
 
 # Logs
 *.log

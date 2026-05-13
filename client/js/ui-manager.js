@@ -13,6 +13,25 @@
  *   - Waiting room player list
  */
 
+// Pip slots active for each die face value (3×3 grid: tl tm tr / ml mm mr / bl bm br)
+const DIE_PIPS = {
+  1: ['mm'],
+  2: ['tr', 'bl'],
+  3: ['tr', 'mm', 'bl'],
+  4: ['tl', 'tr', 'bl', 'br'],
+  5: ['tl', 'tr', 'mm', 'bl', 'br'],
+  6: ['tl', 'tr', 'ml', 'mr', 'bl', 'br'],
+};
+const ALL_SLOTS = ['tl', 'tm', 'tr', 'ml', 'mm', 'mr', 'bl', 'bm', 'br'];
+
+function setDiePips(prefix, value) {
+  const active = new Set(DIE_PIPS[value] || []);
+  for (const slot of ALL_SLOTS) {
+    const el = document.getElementById(`${prefix}-${slot}`);
+    if (el) el.classList.toggle('pip', active.has(slot));
+  }
+}
+
 const UIManager = (() => {
 
   // ── screen management ──────────────────────────────────────────────────────
@@ -27,19 +46,36 @@ const UIManager = (() => {
 
   const MAX_LOG_ENTRIES = 100;
 
+  const LOG_ICONS = {
+    dice:     '🎲',
+    move:     '▸',
+    money:    '💰',
+    property: '🏠',
+    jail:     '🚔',
+    card:     '🃏',
+    trade:    '🤝',
+    auction:  '🔔',
+    game:     '🏆',
+    info:     '·',
+    turn:     '',
+  };
+
   function appendLog(message, type = 'info') {
     const log = document.getElementById('game-log');
     if (!log) return;
 
     const entry = document.createElement('div');
-    entry.className   = `log-entry type-${type}`;
-    entry.textContent = message;
-    log.appendChild(entry);
+    entry.className = `log-entry type-${type}`;
 
-    // Keep log from growing unbounded
-    while (log.children.length > MAX_LOG_ENTRIES) {
-      log.removeChild(log.firstChild);
+    if (type === 'turn') {
+      entry.innerHTML = `<span class="log-divider-text">${escHtml(message)}</span>`;
+    } else {
+      const icon = LOG_ICONS[type] ?? '·';
+      entry.innerHTML = `<span class="log-icon">${icon}</span><span class="log-msg">${escHtml(message)}</span>`;
     }
+
+    log.appendChild(entry);
+    while (log.children.length > MAX_LOG_ENTRIES) log.removeChild(log.firstChild);
     log.scrollTop = log.scrollHeight;
   }
 
@@ -117,6 +153,20 @@ const UIManager = (() => {
     const isMyTurn = currentPlayer.userId === myUserId;
     el.textContent = isMyTurn ? 'Your turn!' : `${currentPlayer.username}'s turn`;
     el.classList.toggle('my-turn', isMyTurn);
+
+    // Dice display
+    const [d1, d2]  = state.turnState.dice || [0, 0];
+    const diceEl    = document.getElementById('dice-display');
+    const doublesEl = document.getElementById('doubles-badge');
+    if (!diceEl) return;
+    if (d1 === 0 && d2 === 0) {
+      diceEl.style.display = 'none';
+    } else {
+      setDiePips('d1', d1);
+      setDiePips('d2', d2);
+      doublesEl.style.display = (d1 === d2) ? '' : 'none';
+      diceEl.style.display = 'flex';
+    }
   }
 
   // ── action buttons ─────────────────────────────────────────────────────────
@@ -219,7 +269,12 @@ const UIManager = (() => {
     btn.className   = `btn ${classes}`;
     btn.textContent = label;
     btn.disabled    = disabled;
-    if (onClick) btn.addEventListener('click', onClick);
+    if (onClick) btn.addEventListener('click', () => {
+      // Disable immediately to prevent double-emit from a laggy double-click.
+      // The button will be recreated on the next state update anyway.
+      btn.disabled = true;
+      onClick();
+    });
     container.appendChild(btn);
   }
 
@@ -392,26 +447,32 @@ const UIManager = (() => {
       const actionsEl = document.getElementById('prop-modal-actions');
       if (!propState.mortgaged && propState.houses === 0) {
         addBtn(actionsEl, '🔒 Mortgage ($' + sq.mortgage + ')', 'btn-outline btn-full', () => {
+          if (!confirm(`Mortgage ${sq.name} for $${sq.mortgage}?\nYou won't collect rent while it's mortgaged.`)) return;
           handlers.mortgageProperty(position);
           closePropertyModal();
         });
       }
       if (propState.mortgaged) {
         addBtn(actionsEl, '🔓 Unmortgage ($' + sq.unmortgageCost + ')', 'btn-outline btn-full', () => {
+          if (!confirm(`Unmortgage ${sq.name} for $${sq.unmortgageCost}?`)) return;
           handlers.unmortgageProperty(position);
           closePropertyModal();
         }, myPlayer.money < sq.unmortgageCost);
       }
       if (sq.type === 'property' && !propState.mortgaged && propState.houses < 5) {
-        const cost = propState.houses === 4 ? sq.hotelCost : sq.houseCost;
+        const cost  = propState.houses === 4 ? sq.hotelCost : sq.houseCost;
+        const btype = propState.houses === 4 ? 'hotel' : 'house';
         addBtn(actionsEl, `🏠 Build ${propState.houses === 4 ? 'Hotel' : 'House'} ($${cost})`, 'btn-primary btn-full', () => {
+          if (!confirm(`Build a ${btype} on ${sq.name} for $${cost}?`)) return;
           handlers.buildHouse(position);
           closePropertyModal();
         }, myPlayer.money < cost);
       }
       if (sq.type === 'property' && propState.houses > 0) {
         const sellPrice = propState.houses === 5 ? Math.floor(sq.hotelCost / 2) : Math.floor(sq.houseCost / 2);
-        addBtn(actionsEl, `💰 Sell ${propState.houses === 5 ? 'Hotel' : 'House'} ($${sellPrice})`, 'btn-outline btn-full', () => {
+        const btype     = propState.houses === 5 ? 'Hotel' : 'House';
+        addBtn(actionsEl, `💰 Sell ${btype} ($${sellPrice})`, 'btn-outline btn-full', () => {
+          if (!confirm(`Sell a ${btype.toLowerCase()} on ${sq.name} for $${sellPrice}? (half price)`)) return;
           handlers.sellHouse(position);
           closePropertyModal();
         });
@@ -471,26 +532,32 @@ const UIManager = (() => {
 
         if (!ps.mortgaged && ps.houses === 0) {
           addBtn(btns, `🔒 $${sq.mortgage}`, 'btn-outline btn-sm', () => {
+            if (!confirm(`Mortgage ${sq.name} for $${sq.mortgage}?\nYou won't collect rent while it's mortgaged.`)) return;
             handlers.mortgageProperty(pos);
             closeMyPropertiesModal();
           });
         }
         if (ps.mortgaged) {
           addBtn(btns, `🔓 $${sq.unmortgageCost}`, 'btn-outline btn-sm', () => {
+            if (!confirm(`Unmortgage ${sq.name} for $${sq.unmortgageCost}?`)) return;
             handlers.unmortgageProperty(pos);
             closeMyPropertiesModal();
           }, myPlayer.money < sq.unmortgageCost);
         }
         if (sq.type === 'property' && !ps.mortgaged && ps.houses < 5) {
-          const cost = ps.houses === 4 ? sq.hotelCost : sq.houseCost;
+          const cost  = ps.houses === 4 ? sq.hotelCost : sq.houseCost;
+          const btype = ps.houses === 4 ? 'hotel' : 'house';
           addBtn(btns, `🏠 $${cost}`, 'btn-primary btn-sm', () => {
+            if (!confirm(`Build a ${btype} on ${sq.name} for $${cost}?`)) return;
             handlers.buildHouse(pos);
             closeMyPropertiesModal();
           }, myPlayer.money < cost);
         }
         if (sq.type === 'property' && ps.houses > 0) {
           const sell = ps.houses === 5 ? Math.floor(sq.hotelCost / 2) : Math.floor(sq.houseCost / 2);
+          const btype = ps.houses === 5 ? 'hotel' : 'house';
           addBtn(btns, `💰 $${sell}`, 'btn-outline btn-sm', () => {
+            if (!confirm(`Sell a ${btype} on ${sq.name} for $${sell}? (half price)`)) return;
             handlers.sellHouse(pos);
             closeMyPropertiesModal();
           });

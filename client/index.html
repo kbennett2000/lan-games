@@ -173,6 +173,7 @@
       <span id="game-turn-indicator" class="turn-indicator"></span>
     </div>
     <div class="game-header-right">
+      <button id="mute-btn"        class="btn btn-sm btn-outline" title="Toggle sound">🔊</button>
       <button id="save-game-btn"  class="btn btn-sm btn-outline">💾 Save</button>
       <button id="quit-game-btn"  class="btn btn-sm btn-outline">✕ Quit</button>
     </div>
@@ -218,6 +219,19 @@
       <!-- Action panel -->
       <section class="action-section" id="action-section">
         <h3 id="action-title">Actions</h3>
+        <div id="dice-display" class="dice-display" style="display:none">
+          <div class="die" id="die-1">
+            <div class="pip-slot" id="d1-tl"></div><div class="pip-slot" id="d1-tm"></div><div class="pip-slot" id="d1-tr"></div>
+            <div class="pip-slot" id="d1-ml"></div><div class="pip-slot" id="d1-mm"></div><div class="pip-slot" id="d1-mr"></div>
+            <div class="pip-slot" id="d1-bl"></div><div class="pip-slot" id="d1-bm"></div><div class="pip-slot" id="d1-br"></div>
+          </div>
+          <div class="die" id="die-2">
+            <div class="pip-slot" id="d2-tl"></div><div class="pip-slot" id="d2-tm"></div><div class="pip-slot" id="d2-tr"></div>
+            <div class="pip-slot" id="d2-ml"></div><div class="pip-slot" id="d2-mm"></div><div class="pip-slot" id="d2-mr"></div>
+            <div class="pip-slot" id="d2-bl"></div><div class="pip-slot" id="d2-bm"></div><div class="pip-slot" id="d2-br"></div>
+          </div>
+          <span id="doubles-badge" class="doubles-badge" style="display:none">Doubles!</span>
+        </div>
         <div id="action-buttons" class="action-buttons">
           <!-- built dynamically -->
         </div>
@@ -368,6 +382,7 @@
 <!-- ── scripts (load order matters) ────────────────────────────────────────── -->
 <!-- Socket.io client is served by the server automatically at /socket.io/socket.io.js -->
 <script src="/socket.io/socket.io.js"></script>
+<script src="/js/sound-manager.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/game-state.js"></script>
 <script src="/js/board-renderer.js"></script>

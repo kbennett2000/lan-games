@@ -159,6 +159,21 @@ function totalBuildingsInPlay(state) {
   return { houses, hotels };
 }
 
+/**
+ * Returns an error string if `userId` is not the current player acting in a
+ * pre-roll or post-roll phase, or null if the action is permitted.
+ * Used to guard property-management actions (build, sell, mortgage).
+ */
+function assertMyPropertyTurn(state, userId) {
+  const cur = state.players[state.turnState.currentPlayerIndex];
+  if (!cur || cur.userId !== userId) return 'Not your turn';
+  const phase = state.turnState.phase;
+  if (phase !== 'pre-roll' && phase !== 'post-roll') {
+    return 'Can only manage properties before or after rolling on your turn';
+  }
+  return null;
+}
+
 /** Net worth of a player: cash + property values (at mortgage value). */
 function playerNetWorth(state, userId) {
   let worth = 0;
@@ -635,6 +650,8 @@ function rollDice(state, userId) {
       events.push(event('PLAYER_JAILED', { username: currentPlayer.username, reason: 'three-doubles' }));
       return { state, events };
     }
+  } else {
+    state.turnState.doubles = 0;
   }
 
   // Normal movement
@@ -688,8 +705,7 @@ function handleJailRoll(state, playerIdx, d1, d2, isDoubles, events) {
     const landed = processLanding(state, playerIdx, events);
     state  = landed.state;
     events.push(...landed.newEvents);
-    // After getting out of jail with doubles, the player does NOT roll again
-    if (state.turnState.phase === 'post-roll') state.turnState.phase = 'post-roll';
+    // Getting out of jail with doubles does NOT grant a re-roll
   } else {
     player.jailTurns++;
     if (player.jailTurns >= state.config.settings.jailMaxTurns) {
@@ -953,6 +969,9 @@ function buildHouse(state, userId, position) {
   const player  = state.players.find(p => p.userId === userId);
   if (!player) return { state, events, error: 'Player not found' };
 
+  const turnError = assertMyPropertyTurn(state, userId);
+  if (turnError) return { state, events, error: turnError };
+
   const sq        = state.config.board[position];
   const propState = state.properties[position];
 
@@ -1003,6 +1022,9 @@ function sellHouse(state, userId, position) {
   const player  = state.players.find(p => p.userId === userId);
   if (!player) return { state, events, error: 'Player not found' };
 
+  const turnError = assertMyPropertyTurn(state, userId);
+  if (turnError) return { state, events, error: turnError };
+
   const sq        = state.config.board[position];
   const propState = state.properties[position];
 
@@ -1042,6 +1064,9 @@ function mortgageProperty(state, userId, position) {
   const player  = state.players.find(p => p.userId === userId);
   if (!player) return { state, events, error: 'Player not found' };
 
+  const turnError = assertMyPropertyTurn(state, userId);
+  if (turnError) return { state, events, error: turnError };
+
   const sq        = state.config.board[position];
   const propState = state.properties[position];
 
@@ -1067,6 +1092,9 @@ function unmortgageProperty(state, userId, position) {
   const events  = [];
   const player  = state.players.find(p => p.userId === userId);
   if (!player) return { state, events, error: 'Player not found' };
+
+  const turnError = assertMyPropertyTurn(state, userId);
+  if (turnError) return { state, events, error: turnError };
 
   const sq        = state.config.board[position];
   const propState = state.properties[position];
@@ -1328,6 +1356,62 @@ function declareBankruptcy(state, playerIdx, creditorUserId) {
   return { state, events };
 }
 
+// ── skipTurn ──────────────────────────────────────────────────────────────────
+
+/**
+ * Force-advance past a player's turn regardless of the current phase.
+ * Used by the turn timer when a player disconnects mid-turn.
+ * If the game is in auctioning phase the timer does not fire, so this
+ * function only needs to handle pre-roll / buying / post-roll.
+ *
+ * @returns {{ state, events, error? }}
+ */
+function skipTurn(state, userId) {
+  const events    = [];
+  const playerIdx = state.players.findIndex(p => p.userId === userId);
+  if (playerIdx < 0) return { state, events, error: 'Player not found' };
+  if (state.turnState.currentPlayerIndex !== playerIdx) {
+    return { state, events, error: 'Not this player\'s turn' };
+  }
+
+  state = clone(state);
+  const player = state.players[playerIdx];
+
+  // Clear any mid-turn pending state (pending auction, trade offer, etc.)
+  state.auction = null;
+  state.trade   = null;
+
+  // Win-condition check (shouldn't fire here, but be safe)
+  const active = state.players.filter(p => !p.isBankrupt);
+  if (active.length <= 1) {
+    if (active.length === 1) {
+      state.status = 'finished';
+      log(state, `${active[0].username} wins the game!`, 'game');
+      events.push(event('GAME_OVER', { winner: active[0].username }));
+    }
+    return { state, events };
+  }
+
+  let nextIdx = (playerIdx + 1) % state.players.length;
+  while (state.players[nextIdx].isBankrupt) {
+    nextIdx = (nextIdx + 1) % state.players.length;
+  }
+
+  state.turnState = {
+    currentPlayerIndex: nextIdx,
+    phase:   'pre-roll',
+    dice:    [0, 0],
+    doubles: 0,
+    cardDrawn: null,
+  };
+
+  log(state, `${player.username}'s turn was auto-skipped (disconnected)`, 'info');
+  events.push(event('TURN_SKIPPED',  { username: player.username }));
+  events.push(event('TURN_STARTED',  { username: state.players[nextIdx].username, playerIndex: nextIdx }));
+
+  return { state, events };
+}
+
 // ── exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -1349,6 +1433,7 @@ module.exports = {
   rejectTrade,
   cancelTrade,
   declareBankruptcy,
+  skipTurn,
   calculateRent,
   playerNetWorth,
 };

@@ -49,6 +49,18 @@ const SocketClient = (() => {
       console.warn('[socket] disconnected:', reason);
     });
 
+    // Auto-rejoin the game room after a network hiccup reconnects the socket.
+    // The server will send game:state which re-syncs all UI.
+    socket.on('reconnect', () => {
+      console.log('[socket] reconnected, rejoining game room');
+      const gameId = GameState.getGameId();
+      if (gameId) {
+        socket.emit('join_game', gameId, (res) => {
+          if (res?.error) console.error('[socket] auto-rejoin failed:', res.error);
+        });
+      }
+    });
+
     socket.on('auth:error', ({ message }) => {
       console.error('[socket] auth error:', message);
       API.clearToken();
@@ -108,6 +120,10 @@ const SocketClient = (() => {
       if (_onLobbyUpdate) _onLobbyUpdate();
     });
 
+    socket.on('game:turn_warning', ({ username, secondsRemaining }) => {
+      UIManager.appendLog(`⏱ ${username} disconnected — turn auto-skips in ${secondsRemaining}s`, 'info');
+    });
+
   } // end connect()
 
   // ── full state update handler ──────────────────────────────────────────────
@@ -164,39 +180,70 @@ const SocketClient = (() => {
   // ── game event visual handler ──────────────────────────────────────────────
 
   function handleGameEvent(ev, state) {
+    const myUsername = GameState.getUser()?.username;
+
     switch (ev.type) {
+      case 'DICE_ROLLED':
+        SoundManager.playDice();
+        break;
       case 'PLAYER_MOVED':
         BoardRenderer.flashSquare(ev.data.to);
         break;
       case 'PLAYER_LANDED':
         UIManager.appendLog(`${ev.data.username} landed on ${ev.data.squareName}`, 'move');
         break;
+      case 'PASSED_GO':
+        SoundManager.playBigCollect();
+        break;
       case 'PLAYER_JAILED':
         UIManager.appendLog(`🚔 ${ev.data.username} was sent to Jail!`, 'jail');
+        SoundManager.playJail();
         break;
       case 'PLAYER_FREED_FROM_JAIL':
         UIManager.appendLog(`${ev.data.username} got out of Jail`, 'jail');
+        SoundManager.playFreeJail();
+        break;
+      case 'JAIL_FINE_PAID':
+        SoundManager.playPay(false);
         break;
       case 'PROPERTY_BOUGHT':
         UIManager.appendLog(`${ev.data.username} bought ${ev.data.name} for $${ev.data.price}`, 'property');
+        SoundManager.playBuy();
         break;
       case 'AUCTION_STARTED':
         UIManager.appendLog(`🔔 Auction: ${ev.data.name} (min bid $${ev.data.minBid})`, 'auction');
         break;
       case 'AUCTION_WON':
         UIManager.appendLog(`${ev.data.username} won ${ev.data.name} at auction for $${ev.data.amount}`, 'auction');
+        if (ev.data.username === myUsername) SoundManager.playBigCollect();
+        else                                 SoundManager.playBuy();
         break;
       case 'MONOPOLY_ACHIEVED':
         UIManager.appendLog(`🏆 ${ev.data.username} has a monopoly on ${ev.data.colorGroup}!`, 'property');
+        SoundManager.playMonopoly();
         break;
-      case 'RENT_PAID':
+      case 'RENT_PAID': {
         UIManager.appendLog(`${ev.data.from} paid $${ev.data.amount} rent to ${ev.data.to}`, 'money');
+        const big = ev.data.amount >= 100;
+        if (ev.data.to   === myUsername) SoundManager.playCollect();
+        else if (ev.data.from === myUsername) SoundManager.playPay(big);
+        break;
+      }
+      case 'FREE_PARKING_COLLECTED':
+        UIManager.appendLog(`🅿 ${ev.data.username} collected $${ev.data.amount} from Free Parking!`, 'money');
+        SoundManager.playBigCollect();
+        break;
+      case 'MONEY_RECEIVED':
+        UIManager.appendLog(`${ev.data.username} collected $${ev.data.amount}`, 'money');
+        if (ev.data.username === myUsername) SoundManager.playCollect();
         break;
       case 'CARD_DRAWN':
         UIManager.appendLog(`🃏 ${ev.data.username}: "${ev.data.card.text}"`, 'card');
+        SoundManager.playCard();
         break;
       case 'BUILDING_BUILT':
         UIManager.appendLog(`🏠 ${ev.data.username} built a ${ev.data.buildingType} on ${ev.data.name}`, 'property');
+        SoundManager.playBuild();
         break;
       case 'BUILDING_SOLD':
         UIManager.appendLog(`${ev.data.username} sold a ${ev.data.buildingType} on ${ev.data.name} for $${ev.data.sellPrice}`, 'property');
@@ -212,18 +259,24 @@ const SocketClient = (() => {
         break;
       case 'TRADE_ACCEPTED':
         UIManager.appendLog(`Trade between ${ev.data.from} and ${ev.data.to} completed`, 'trade');
+        SoundManager.playCollect();
         break;
       case 'TRADE_REJECTED':
         UIManager.appendLog(`${ev.data.to} rejected ${ev.data.from}'s trade`, 'trade');
         break;
       case 'PLAYER_BANKRUPT':
         UIManager.appendLog(`💸 ${ev.data.username} is bankrupt!`, 'game');
+        SoundManager.playBankrupt();
         break;
       case 'GAME_OVER':
         UIManager.appendLog(`🏆 ${ev.data.winner} wins the game!`, 'game');
+        SoundManager.playGameOver();
         break;
       case 'PLAYER_CONNECTED':
         UIManager.appendLog(`${ev.data.username} reconnected`, 'info');
+        break;
+      case 'TURN_SKIPPED':
+        UIManager.appendLog(`⏭ ${ev.data.username}'s turn was auto-skipped (disconnected)`, 'info');
         break;
       case 'PLAYER_DISCONNECTED':
         UIManager.appendLog(`${ev.data.username} disconnected`, 'info');

@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "test": "jest --testPathPattern=test/",
+    "reset-db": "node scripts/reset-db.js",
+    "reset-db:hard": "node scripts/reset-db.js --hard"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -17,6 +20,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.1.0"
   },
   "engines": {

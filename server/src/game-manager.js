@@ -301,6 +301,10 @@ function applyAction(gameId, userId, action, payload = {}) {
       break;
     }
 
+    case 'skipTurn':
+      result = gameLogic.skipTurn(state, userId);
+      break;
+
     default:
       return { state, events: [], error: `Unknown action: ${action}` };
   }

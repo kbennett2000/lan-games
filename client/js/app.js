@@ -275,6 +275,11 @@
   });
 
   // Header buttons
+  document.getElementById('mute-btn').addEventListener('click', () => {
+    const on = SoundManager.toggle();
+    document.getElementById('mute-btn').textContent = on ? '🔊' : '🔇';
+  });
+
   document.getElementById('save-game-btn').addEventListener('click', () => {
     SocketClient.saveGame();
   });
