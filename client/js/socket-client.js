@@ -87,12 +87,21 @@ const SocketClient = (() => {
     });
 
     socket.on('game:error', ({ message }) => {
-      UIManager.appendLog(`⚠ ${message}`, 'info');
-      // Brief visual flash
-      const actionsEl = document.getElementById('action-buttons');
-      if (actionsEl) {
-        actionsEl.style.outline = '2px solid #e53935';
-        setTimeout(() => { actionsEl.style.outline = ''; }, 1000);
+      const activeRenderer = GameRendererRegistry.getActive();
+      if (activeRenderer?.onEvent) {
+        // Deliver ACTION_REJECTED to the active renderer; it owns the user-facing feedback.
+        activeRenderer.onEvent(
+          { type: 'ACTION_REJECTED', data: { message }, timestamp: Date.now() },
+          GameState.getState()
+        );
+      } else {
+        // Legacy fallback for non-registry renderers (Monopoly pre-migration).
+        UIManager.appendLog(`⚠ ${message}`, 'info');
+        const actionsEl = document.getElementById('action-buttons');
+        if (actionsEl) {
+          actionsEl.style.outline = '2px solid #e53935';
+          setTimeout(() => { actionsEl.style.outline = ''; }, 1000);
+        }
       }
     });
 
@@ -131,26 +140,26 @@ const SocketClient = (() => {
   function handleFullStateUpdate(state) {
     if (!state) return;
 
-    const myUser   = GameState.getUser();
-    const myUserId = myUser?.id;
+    const myUserId       = GameState.getUser()?.id;
+    const activeRenderer = GameRendererRegistry.getActive();
 
     // Show the correct screen if the game status changed
     if (state.status === 'waiting') {
       UIManager.showScreen('waiting-screen');
-      // Keep the game-name header in sync when a socket push updates the state
       const nameEl = document.getElementById('waiting-game-name');
       if (nameEl && state.name) nameEl.textContent = state.name;
-      // createdBy is embedded in the state by the server — no client-side tracking needed
       UIManager.renderWaitingPlayers(state, myUserId, state.createdBy);
     } else if (state.status === 'playing' || state.status === 'paused') {
-      // Ensure we're on the game screen
       const gameScreenActive = document.getElementById('game-screen').classList.contains('active');
       if (!gameScreenActive) {
         UIManager.showScreen('game-screen');
-        // Build the game-type-appropriate board (only once per game)
-        if (state.gameType === 'connect-four') {
-          ConnectFourRenderer.buildBoard(state.config, (col) => action('dropPiece', { column: col }));
+        // Build the game-type-appropriate board (only once per game join).
+        const renderer = GameRendererRegistry.get(state.gameType);
+        if (renderer) {
+          GameRendererRegistry.setActive(renderer);
+          renderer.init(document.querySelector('.board-wrapper'), state, myUserId, action);
         } else {
+          // Monopoly (pre-migration legacy path)
           BoardRenderer.buildBoard(state.config.board, (pos) => {
             UIManager.showPropertyModal(pos, GameState.getState(), myUserId, getPropertyHandlers());
           });
@@ -163,14 +172,14 @@ const SocketClient = (() => {
       UIManager.updatePlayerPanels(state);
       UIManager.updateTurnIndicator(state, myUserId);
 
-      if (state.gameType === 'connect-four') {
-        ConnectFourRenderer.update(state);
-        ConnectFourRenderer.updateActionPanel(state, myUserId);
+      const renderer = GameRendererRegistry.getActive();
+      if (renderer) {
+        renderer.update(state);
       } else {
+        // Monopoly (pre-migration legacy path)
         BoardRenderer.update(state);
         UIManager.updateActionPanel(state, myUserId, getActionHandlers());
 
-        // Pending trade modal
         if (state.trade && state.trade.status === 'pending' && state.trade.toUserId === myUserId) {
           UIManager.showIncomingTrade(state, myUserId);
         } else {
@@ -180,21 +189,17 @@ const SocketClient = (() => {
     }
 
     if (state.status === 'finished') {
-      // Generic winner lookup: prefer state.winner (userId), fall back to Monopoly-style isBankrupt check
+      // Generic winner lookup: prefer state.winner (userId), fall back to Monopoly isBankrupt check.
       let winnerName;
       if (state.winner !== undefined && state.winner !== null) {
-        const winner = state.players.find(p => p.userId === state.winner);
-        winnerName = winner?.username;
-      } else if (state.winner === null && state.gameType === 'connect-four') {
+        winnerName = state.players.find(p => p.userId === state.winner)?.username;
+      } else if (state.winner === null) {
         winnerName = null; // draw
       } else {
-        const winner = state.players.find(p => !p.isBankrupt);
-        winnerName = winner?.username;
+        winnerName = state.players.find(p => !p.isBankrupt)?.username;
       }
-      // Disable CF column buttons on game over
-      if (state.gameType === 'connect-four') {
-        ConnectFourRenderer.updateActionPanel(state, myUserId);
-      }
+      // Let the active renderer disable its controls on game over.
+      GameRendererRegistry.getActive()?.update(state);
       UIManager.showGameOver(winnerName);
     }
   }
@@ -204,6 +209,30 @@ const SocketClient = (() => {
   function handleGameEvent(ev, state) {
     const myUsername = GameState.getUser()?.username;
 
+    // Deliver to the active renderer first (handles game-specific events
+    // such as ACTION_REJECTED, PIECE_DROPPED, and game-specific GAME_OVER logs).
+    const activeRenderer = GameRendererRegistry.getActive();
+    if (activeRenderer?.onEvent) {
+      activeRenderer.onEvent(ev, state);
+    }
+
+    // Framework always handles these generic events regardless of renderer.
+    switch (ev.type) {
+      case 'PLAYER_CONNECTED':
+        UIManager.appendLog(`${ev.data.username} reconnected`, 'info');
+        return;
+      case 'TURN_SKIPPED':
+        UIManager.appendLog(`⏭ ${ev.data.username}'s turn was auto-skipped (disconnected)`, 'info');
+        return;
+      case 'PLAYER_DISCONNECTED':
+        UIManager.appendLog(`${ev.data.username} disconnected`, 'info');
+        return;
+    }
+
+    // If there is an active renderer it handled game-specific events above; skip the legacy path.
+    if (activeRenderer) return;
+
+    // ── Monopoly (pre-migration) legacy event handling ─────────────────────
     switch (ev.type) {
       case 'DICE_ROLLED':
         SoundManager.playDice();
@@ -293,15 +322,6 @@ const SocketClient = (() => {
       case 'GAME_OVER':
         UIManager.appendLog(ev.data.winner ? `🏆 ${ev.data.winner} wins the game!` : "🤝 It's a draw!", 'game');
         SoundManager.playGameOver();
-        break;
-      case 'PLAYER_CONNECTED':
-        UIManager.appendLog(`${ev.data.username} reconnected`, 'info');
-        break;
-      case 'TURN_SKIPPED':
-        UIManager.appendLog(`⏭ ${ev.data.username}'s turn was auto-skipped (disconnected)`, 'info');
-        break;
-      case 'PLAYER_DISCONNECTED':
-        UIManager.appendLog(`${ev.data.username} disconnected`, 'info');
         break;
     }
   }

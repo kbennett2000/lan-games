@@ -281,7 +281,14 @@
     UIManager.showScreen('game-screen');
     document.getElementById('game-title').textContent = state.name;
 
-    // Reset board area so switching game types is clean
+    // Destroy the previous renderer (if any) and reset the board area.
+    const prevRenderer = GameRendererRegistry.getActive();
+    if (prevRenderer) {
+      prevRenderer.destroy();
+      GameRendererRegistry.clearActive();
+    }
+    // Reset board area for the Monopoly (non-registry) path, and as a
+    // safety net after destroy() in case game type is switching.
     const monoBoard = document.getElementById('board');
     const cfWrapper = document.getElementById('connect-four-wrapper');
     if (monoBoard) monoBoard.style.display = '';
@@ -289,15 +296,18 @@
 
     GameState.setState(state);
 
-    const myUserId = GameState.getUser()?.id;
+    const myUserId   = GameState.getUser()?.id;
+    const emitAction = (name, payload = {}) => SocketClient.emitAction(name, payload);
 
-    if (state.gameType === 'connect-four') {
-      ConnectFourRenderer.buildBoard(state.config, (col) => SocketClient.emitAction('dropPiece', { column: col }));
-      ConnectFourRenderer.update(state);
+    const renderer = GameRendererRegistry.get(state.gameType);
+    if (renderer) {
+      GameRendererRegistry.setActive(renderer);
+      renderer.init(document.querySelector('.board-wrapper'), state, myUserId, emitAction);
+      renderer.update(state);
       UIManager.updatePlayerPanels(state);
       UIManager.updateTurnIndicator(state, myUserId);
-      ConnectFourRenderer.updateActionPanel(state, myUserId);
     } else {
+      // Monopoly (pre-migration legacy path)
       BoardRenderer.buildBoard(state.config.board, (pos) => {
         UIManager.showPropertyModal(pos, GameState.getState(), myUserId, SocketClient.getPropertyHandlers());
       });
