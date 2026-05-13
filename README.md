@@ -101,7 +101,7 @@ lan-games/
 │   ├── package.json
 │   ├── scripts/
 │   │   └── reset-db.js           ← wipe the database (--hard to also delete the file)
-│   ├── data/                     ← created at runtime; holds monopoly.db (gitignored)
+│   ├── data/                     ← created at runtime; holds lan-games.db (gitignored)
 │   │
 │   ├── games/                    ← one subdirectory per game type
 │   │   ├── monopoly/

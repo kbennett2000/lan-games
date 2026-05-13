@@ -14,7 +14,7 @@ const jwt    = require('jsonwebtoken');
 
 // In production, set JWT_SECRET in an environment variable.
 // The server will warn on startup if a default is used.
-const JWT_SECRET  = process.env.JWT_SECRET || 'monopoly-dev-secret-change-in-production';
+const JWT_SECRET  = process.env.JWT_SECRET || 'lan-games-dev-secret-change-in-production';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 const SALT_ROUNDS = 12;
 

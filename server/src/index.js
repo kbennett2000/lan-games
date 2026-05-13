@@ -1,5 +1,5 @@
 /**
- * index.js — Monopoly Server entry point
+ * index.js — LAN Games server entry point
  *
  * Starts an Express HTTP server combined with a Socket.io WebSocket server.
  * The client (served from ../client) connects to both:
@@ -96,7 +96,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 httpServer.listen(PORT, HOST, () => {
   const iface = HOST === '0.0.0.0' ? 'all interfaces' : HOST;
-  console.log(`\n🎲  Monopoly Server running on port ${PORT} (${iface})`);
+  console.log(`\n🎲  LAN Games server running on port ${PORT} (${iface})`);
   console.log(`   Open http://localhost:${PORT} in your browser`);
   console.log(`   LAN players can connect via http://<your-ip>:${PORT}\n`);
 });

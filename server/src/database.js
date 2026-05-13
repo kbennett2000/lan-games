@@ -15,7 +15,7 @@ const Database = require('better-sqlite3');
 // ── path setup ───────────────────────────────────────────────────────────────
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_PATH  = path.join(DATA_DIR, 'monopoly.db');
+const DB_PATH  = path.join(DATA_DIR, 'lan-games.db');
 
 // Ensure the data directory exists before opening the DB
 if (!fs.existsSync(DATA_DIR)) {
