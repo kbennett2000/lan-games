@@ -147,33 +147,55 @@ const SocketClient = (() => {
       const gameScreenActive = document.getElementById('game-screen').classList.contains('active');
       if (!gameScreenActive) {
         UIManager.showScreen('game-screen');
-        // Build the board (only needs to happen once per game)
-        BoardRenderer.buildBoard(state.config.board, (pos) => {
-          UIManager.showPropertyModal(pos, GameState.getState(), myUserId, getPropertyHandlers());
-        });
-        // Load full log on first view
+        // Build the game-type-appropriate board (only once per game)
+        if (state.gameType === 'connect-four') {
+          ConnectFourRenderer.buildBoard(state.config, (col) => action('dropPiece', { column: col }));
+        } else {
+          BoardRenderer.buildBoard(state.config.board, (pos) => {
+            UIManager.showPropertyModal(pos, GameState.getState(), myUserId, getPropertyHandlers());
+          });
+        }
         UIManager.appendLogsFromState(state);
       }
     }
 
     if (state.status === 'playing') {
-      // Update all dynamic elements
-      BoardRenderer.update(state);
       UIManager.updatePlayerPanels(state);
       UIManager.updateTurnIndicator(state, myUserId);
-      UIManager.updateActionPanel(state, myUserId, getActionHandlers());
 
-      // If there's a pending trade for me, show the incoming modal
-      if (state.trade && state.trade.status === 'pending' && state.trade.toUserId === myUserId) {
-        UIManager.showIncomingTrade(state, myUserId);
+      if (state.gameType === 'connect-four') {
+        ConnectFourRenderer.update(state);
+        ConnectFourRenderer.updateActionPanel(state, myUserId);
       } else {
-        UIManager.closeIncomingTrade();
+        BoardRenderer.update(state);
+        UIManager.updateActionPanel(state, myUserId, getActionHandlers());
+
+        // Pending trade modal
+        if (state.trade && state.trade.status === 'pending' && state.trade.toUserId === myUserId) {
+          UIManager.showIncomingTrade(state, myUserId);
+        } else {
+          UIManager.closeIncomingTrade();
+        }
       }
     }
 
     if (state.status === 'finished') {
-      const winner = state.players.find(p => !p.isBankrupt);
-      UIManager.showGameOver(winner?.username);
+      // Generic winner lookup: prefer state.winner (userId), fall back to Monopoly-style isBankrupt check
+      let winnerName;
+      if (state.winner !== undefined && state.winner !== null) {
+        const winner = state.players.find(p => p.userId === state.winner);
+        winnerName = winner?.username;
+      } else if (state.winner === null && state.gameType === 'connect-four') {
+        winnerName = null; // draw
+      } else {
+        const winner = state.players.find(p => !p.isBankrupt);
+        winnerName = winner?.username;
+      }
+      // Disable CF column buttons on game over
+      if (state.gameType === 'connect-four') {
+        ConnectFourRenderer.updateActionPanel(state, myUserId);
+      }
+      UIManager.showGameOver(winnerName);
     }
   }
 
@@ -269,7 +291,7 @@ const SocketClient = (() => {
         SoundManager.playBankrupt();
         break;
       case 'GAME_OVER':
-        UIManager.appendLog(`🏆 ${ev.data.winner} wins the game!`, 'game');
+        UIManager.appendLog(ev.data.winner ? `🏆 ${ev.data.winner} wins the game!` : "🤝 It's a draw!", 'game');
         SoundManager.playGameOver();
         break;
       case 'PLAYER_CONNECTED':
@@ -405,6 +427,7 @@ const SocketClient = (() => {
     getHostId,
     getActionHandlers,
     getPropertyHandlers,
+    emitAction: (name, payload = {}) => action(name, payload),
   };
 
 })();

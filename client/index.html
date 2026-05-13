@@ -190,6 +190,9 @@
 
     <!-- ── board ─────────────────────────────────────────────────────────── -->
     <div class="board-wrapper">
+      <!-- Connect Four board — shown only when gameType === 'connect-four' -->
+      <div id="connect-four-wrapper" class="connect-four-wrapper" style="display:none"></div>
+
       <div id="board" class="board">
         <!-- squares inserted by board-renderer.js -->
         <div class="board-center">
@@ -390,6 +393,7 @@
 <!-- Socket.io client is served by the server automatically at /socket.io/socket.io.js -->
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/sound-manager.js"></script>
+<script src="/js/games/connect-four/renderer.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/game-state.js"></script>
 <script src="/js/board-renderer.js"></script>

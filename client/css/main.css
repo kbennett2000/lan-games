@@ -798,6 +798,71 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 /* Game over */
 .game-over-message { font-size: 20px; text-align: center; padding: 20px 0; color: var(--accent); font-weight: 700; }
 
+/* ── Connect Four board ───────────────────────────────────────────────────── */
+
+.connect-four-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  gap: 6px;
+}
+
+.cf-col-buttons {
+  display: grid;
+  gap: 4px;
+  width: fit-content;
+}
+
+.cf-col-btn {
+  width: 56px;
+  height: 32px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.cf-col-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.cf-col-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.cf-grid {
+  display: grid;
+  gap: 5px;
+  background: #1565c0;
+  padding: 10px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  width: fit-content;
+}
+
+.cf-cell {
+  width: 54px;
+  height: 54px;
+  background: #0d1b2a;
+  border-radius: 50%;
+  transition: background 0.2s;
+  box-shadow: inset 0 3px 6px rgba(0,0,0,0.6);
+}
+
+.cf-cell.filled {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.4), 0 0 6px rgba(255,255,255,0.1);
+}
+
 /* ── scrollbar styling ────────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }

@@ -280,16 +280,33 @@
     // making the browser unresponsive for up to a minute).
     UIManager.showScreen('game-screen');
     document.getElementById('game-title').textContent = state.name;
+
+    // Reset board area so switching game types is clean
+    const monoBoard = document.getElementById('board');
+    const cfWrapper = document.getElementById('connect-four-wrapper');
+    if (monoBoard) monoBoard.style.display = '';
+    if (cfWrapper) { cfWrapper.style.display = 'none'; cfWrapper.innerHTML = ''; }
+
     GameState.setState(state);
 
-    BoardRenderer.buildBoard(state.config.board, (pos) => {
-      UIManager.showPropertyModal(pos, GameState.getState(), GameState.getUser()?.id, SocketClient.getPropertyHandlers());
-    });
+    const myUserId = GameState.getUser()?.id;
 
-    BoardRenderer.update(state);
-    UIManager.updatePlayerPanels(state);
-    UIManager.updateTurnIndicator(state, GameState.getUser()?.id);
-    UIManager.updateActionPanel(state, GameState.getUser()?.id, SocketClient.getActionHandlers());
+    if (state.gameType === 'connect-four') {
+      ConnectFourRenderer.buildBoard(state.config, (col) => SocketClient.emitAction('dropPiece', { column: col }));
+      ConnectFourRenderer.update(state);
+      UIManager.updatePlayerPanels(state);
+      UIManager.updateTurnIndicator(state, myUserId);
+      ConnectFourRenderer.updateActionPanel(state, myUserId);
+    } else {
+      BoardRenderer.buildBoard(state.config.board, (pos) => {
+        UIManager.showPropertyModal(pos, GameState.getState(), myUserId, SocketClient.getPropertyHandlers());
+      });
+      BoardRenderer.update(state);
+      UIManager.updatePlayerPanels(state);
+      UIManager.updateTurnIndicator(state, myUserId);
+      UIManager.updateActionPanel(state, myUserId, SocketClient.getActionHandlers());
+    }
+
     UIManager.appendLogsFromState(state);
   }
 

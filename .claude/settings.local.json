@@ -8,7 +8,8 @@
       "Bash(npm test *)",
       "Bash(node scripts/reset-db.js)",
       "Bash(node -e ' *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(timeout 3 node src/index.js)"
     ]
   }
 }

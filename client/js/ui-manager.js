@@ -117,25 +117,30 @@ const UIManager = (() => {
       if (idx === currentPlayerIdx) card.classList.add('active-turn');
       if (player.isBankrupt)        card.classList.add('bankrupt');
 
-      const colorHex = getPlayerColorHex(state, player);
-      const ownedCount = Object.values(state.properties).filter(ps => ps.ownerId === player.userId).length;
+      const colorHex   = getPlayerColorHex(state, player);
+      const props       = state.properties || {};
+      const ownedCount  = Object.values(props).filter(ps => ps.ownerId === player.userId).length;
 
       let badges = '';
       if (player.inJail)     badges += `<span class="player-jail-badge">JAIL</span>`;
       if (player.isBankrupt) badges += `<span class="player-jail-badge">OUT</span>`;
       if (!player.connected) badges += `<span class="player-jail-badge" style="background:#666">AFK</span>`;
 
+      const moneyHtml = player.money !== undefined
+        ? `<span class="player-card-money">$${player.money.toLocaleString()}</span>`
+        : '';
+      const propsHtml = state.properties
+        ? `<div class="player-card-props">${ownedCount} propert${ownedCount === 1 ? 'y' : 'ies'}${player.jailCards > 0 ? ` · ${player.jailCards} jail card(s)` : ''}</div>`
+        : '';
+
       card.innerHTML = `
         <div class="player-card-header">
           <div class="player-color-dot" style="background:${colorHex}"></div>
-          <span class="player-card-name">${escHtml(player.username)} ${player.token}</span>
+          <span class="player-card-name">${escHtml(player.username)} ${player.token || ''}</span>
           ${badges}
-          <span class="player-card-money">$${player.money.toLocaleString()}</span>
+          ${moneyHtml}
         </div>
-        <div class="player-card-props">
-          ${ownedCount} propert${ownedCount === 1 ? 'y' : 'ies'}
-          ${player.jailCards > 0 ? ` · ${player.jailCards} jail card(s)` : ''}
-        </div>
+        ${propsHtml}
       `;
       panel.appendChild(card);
     });
@@ -701,7 +706,7 @@ const UIManager = (() => {
     const modal   = document.getElementById('game-over-modal');
     const message = document.getElementById('game-over-message');
     if (!modal || !message) return;
-    message.textContent = winnerName ? `🎉 ${winnerName} wins!` : 'Game over!';
+    message.textContent = winnerName ? `🎉 ${winnerName} wins!` : "🤝 It's a draw!";
     modal.style.display = 'flex';
   }
 

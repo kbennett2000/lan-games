@@ -1,0 +1,10 @@
+{
+  "boardWidth": 7,
+  "boardHeight": 6,
+  "winLength": 4,
+  "playerColors": [
+    { "id": "red",    "hex": "#e53935" },
+    { "id": "yellow", "hex": "#fdd835" }
+  ],
+  "playerTokens": ["🔴", "🟡"]
+}

@@ -186,7 +186,7 @@ function startGame(gameId, hostUserId) {
   activeGames.set(gameId, newState);
   persist(newState);
 
-  return { state: newState, events: [{ type: 'GAME_STARTED', data: { players: playerList }, timestamp: Date.now() }] };
+  return { state: newState, events: [{ type: 'GAME_STARTED', data: { players: newState.players.map(p => ({ userId: p.userId, username: p.username })) }, timestamp: Date.now() }] };
 }
 
 /**
