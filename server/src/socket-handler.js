@@ -49,7 +49,7 @@ function scheduleTurnTimeout(io, gameId, userId, username) {
   const key = `${gameId}:${userId}`;
   clearTurnTimeout(key);
   io.to(gameId).emit('game:turn_warning', { username, secondsRemaining: TURN_TIMEOUT_MS / 1000 });
-  turnTimers.set(key, setTimeout(() => {
+  turnTimers.set(key, setTimeout(async () => {
     turnTimers.delete(key);
     const state = gameManager.getGame(gameId);
     if (!state || state.status !== 'playing') return;
@@ -60,7 +60,7 @@ function scheduleTurnTimeout(io, gameId, userId, username) {
     const player = state.players.find(p => p.userId === userId);
     if (player?.connected) return;
     if (logic.isTurnTimerBlocked(state)) return;
-    const result = gameManager.applyAction(gameId, userId, 'skipTurn', {});
+    const result = await gameManager.applyAction(gameId, userId, 'skipTurn', {});
     if (!result.error) {
       io.to(gameId).emit('game:update', { state: result.state, events: result.events });
     }
@@ -110,7 +110,7 @@ function registerHandlers(io) {
 
     // ── join game room ───────────────────────────────────────────────────────
 
-    socket.on('join_game', (gameId, ack) => {
+    socket.on('join_game', async (gameId, ack) => {
       const state = gameManager.getGame(gameId);
       if (!state) {
         return ack?.({ error: 'Game not found' });
@@ -133,13 +133,13 @@ function registerHandlers(io) {
         gameManager.addPlayerToLobby(gameId, { id: currentUser.sub, username: currentUser.username });
       }
 
-      gameManager.setPlayerConnected(gameId, currentUser.sub, true);
+      await gameManager.setPlayerConnected(gameId, currentUser.sub, true);
       // Cancel any pending turn-skip timer now that this player is back
       clearTurnTimeout(`${gameId}:${currentUser.sub}`);
 
       // Auto-resume paused (saved) games when a player rejoins
       if (state.status === 'paused') {
-        gameManager.resumeGame(gameId);
+        await gameManager.resumeGame(gameId);
       }
 
       // Always read the freshest state after the mutations above
@@ -162,14 +162,14 @@ function registerHandlers(io) {
 
     // ── leave game room ──────────────────────────────────────────────────────
 
-    socket.on('leave_game', () => {
+    socket.on('leave_game', async () => {
       const gameId = socketGameMap.get(socket.id);
       if (!gameId) return;
 
       socket.leave(gameId);
       socketGameMap.delete(socket.id);
       clearTurnTimeout(`${gameId}:${currentUser.sub}`);
-      gameManager.setPlayerConnected(gameId, currentUser.sub, false);
+      await gameManager.setPlayerConnected(gameId, currentUser.sub, false);
 
       io.to(gameId).emit('game:update', {
         state:  gameManager.getGame(gameId),
@@ -179,7 +179,7 @@ function registerHandlers(io) {
 
     // ── disconnect ───────────────────────────────────────────────────────────
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`[socket] ${currentUser.username} disconnected (${socket.id})`);
 
       // Only remove from userSocketMap if this socket is still the active one
@@ -191,7 +191,7 @@ function registerHandlers(io) {
       const gameId = socketGameMap.get(socket.id);
       if (gameId) {
         socketGameMap.delete(socket.id);
-        gameManager.setPlayerConnected(gameId, currentUser.sub, false);
+        await gameManager.setPlayerConnected(gameId, currentUser.sub, false);
 
         const state = gameManager.getGame(gameId);
         io.to(gameId).emit('game:update', {
@@ -247,7 +247,7 @@ function registerHandlers(io) {
 
     // ── game action (single generic handler for all player actions) ──────────
 
-    socket.on('game:action', (payload) => {
+    socket.on('game:action', async (payload) => {
       const { action, ...data } = payload || {};
       if (!action) {
         socket.emit('game:error', { message: 'Missing action type' });
@@ -260,7 +260,7 @@ function registerHandlers(io) {
         return;
       }
 
-      const result = gameManager.applyAction(gameId, currentUser.sub, action, data);
+      const result = await gameManager.applyAction(gameId, currentUser.sub, action, data);
 
       if (result.error) {
         socket.emit('game:error', { message: result.error });
@@ -281,11 +281,11 @@ function registerHandlers(io) {
 
     // ── save game ────────────────────────────────────────────────────────────
 
-    socket.on('game:save', (ack) => {
+    socket.on('game:save', async (ack) => {
       const gameId = socketGameMap.get(socket.id);
       if (!gameId) return ack?.({ error: 'Not in a game' });
 
-      const result = gameManager.saveGame(gameId, currentUser.sub);
+      const result = await gameManager.saveGame(gameId, currentUser.sub);
       if (result.error) {
         socket.emit('game:error', { message: result.error });
         return ack?.({ error: result.error });

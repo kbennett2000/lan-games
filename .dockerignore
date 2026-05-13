@@ -1,0 +1,6 @@
+.git/
+.github/
+.claude/
+server/node_modules/
+server/data/
+notes.txt

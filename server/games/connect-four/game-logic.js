@@ -6,7 +6,7 @@
  *
  * State shape:
  *   {
- *     id, name, gameType, createdBy, status, config,
+ *     id, name, gameType, createdBy, stateVersion, status, config,
  *     players: [{ userId, username, color, colorHex, token, active, connected }],
  *     board:   number[][] — [row][col], null = empty, userId = piece owner
  *              row 0 is the TOP, row (height-1) is the BOTTOM
@@ -18,6 +18,12 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { validateImplementation, defaultGetStateForPlayer } = require('../../src/game-logic-interface');
+
+// Bump this whenever the GameState shape changes incompatibly.
+// game-manager.js will call migrate() for any saved game whose
+// stateVersion doesn't match.
+const STATE_VERSION = 1;
 
 const CONFIG_DIR = path.join(__dirname, 'config');
 let _config = null;
@@ -76,16 +82,17 @@ function initGame(gameId, name, players, config) {
   const board = Array.from({ length: boardHeight }, () => Array(boardWidth).fill(null));
 
   return {
-    id:        gameId,
+    id:           gameId,
     name,
-    gameType:  'connect-four',
-    status:    'playing',
-    config:    cfg,
-    players:   players.map(p => ({ ...p })),
+    gameType:     'connect-four',
+    stateVersion: STATE_VERSION,
+    status:       'playing',
+    config:       cfg,
+    players:      players.map(p => ({ ...p })),
     board,
-    turnState: { currentPlayerIndex: 0, phase: 'drop' },
-    winner:    null,
-    log:       [],
+    turnState:    { currentPlayerIndex: 0, phase: 'drop' },
+    winner:       null,
+    log:          [],
   };
 }
 
@@ -238,15 +245,32 @@ function applyAction(state, userId, action, payload = {}) {
   }
 }
 
-// ── optional ──────────────────────────────────────────────────────────────────
-
-function getStateForPlayer(state, _userId) {
-  return state; // no hidden information
-}
-
 // ── exports ───────────────────────────────────────────────────────────────────
 
+/**
+ * Upgrade a persisted state to the current STATE_VERSION.
+ * Add a new `if` branch for each version bump.  See game-logic-interface.js
+ * for the full contract.
+ *
+ * @param   {Object} state  Saved state with stateVersion < STATE_VERSION.
+ * @returns {Object}        New state with stateVersion === STATE_VERSION.
+ * @throws  {Error}         If no migration path exists for the given version.
+ */
+function migrate(state) {
+  // No structural changes yet — STATE_VERSION 1 is the initial release.
+  // Future migrations follow this pattern:
+  //
+  //   if (state.stateVersion < 2) {
+  //     state = { ...state, newField: defaultValue, stateVersion: 2 };
+  //   }
+
+  throw new Error(
+    `[connect-four] No migration path from stateVersion ${state.stateVersion} to ${STATE_VERSION}`,
+  );
+}
+
 module.exports = {
+  STATE_VERSION,
   initGame,
   createInitialPlayer,
   applyAction,
@@ -257,9 +281,9 @@ module.exports = {
   getGameMetadata,
   loadConfig,
   getConfigCopy,
-  getStateForPlayer,
+  getStateForPlayer: defaultGetStateForPlayer,
+  migrate,
 };
 
 // Validate interface compliance at load time
-const { validateImplementation } = require('../../src/game-logic-interface');
 validateImplementation(module.exports);

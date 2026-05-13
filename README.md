@@ -59,7 +59,7 @@ Built with **Node.js · Express · Socket.io** (server) and **vanilla HTML/CSS/J
 
 ### Prerequisites
 
-- **Node.js 18+** (LTS recommended)
+- **Node.js 18+** (LTS recommended) — *or* **Docker** (see below)
 - No external database — SQLite is embedded via `better-sqlite3`
 
 ### Install & run
@@ -72,6 +72,31 @@ npm run dev        # development (nodemon auto-restart)
 ```
 
 The server binds to `0.0.0.0:3000` by default — reachable on your entire LAN.
+
+### Docker
+
+**1. Create a `.env` file** at the repo root containing your JWT secret (the server refuses to start without one):
+
+```bash
+# Generates a random secret and writes it to .env in one step
+node -e "console.log('JWT_SECRET=' + require('crypto').randomBytes(48).toString('hex'))" > .env
+```
+
+**2. Build and start:**
+
+```bash
+docker compose up --build
+```
+
+The Dockerfile runs both the unit and integration test suites during the build — the image is only produced if all tests pass.
+
+Open `http://localhost:3000`. The SQLite database is stored in a Docker named volume (`db-data`) and survives container restarts and image rebuilds.
+
+**To reset the database inside the container:**
+
+```bash
+docker compose run --rm server node scripts/reset-db.js
+```
 
 ### Connect
 
@@ -208,6 +233,14 @@ server/games/my-game/
 ```js
 'use strict';
 
+const {
+  validateImplementation,
+  defaultGetStateForPlayer, // use for perfect-information games; see below
+} = require('../../src/game-logic-interface');
+
+// Bump when the GameState shape changes incompatibly (see "State versioning" below).
+const STATE_VERSION = 1;
+
 // ... your game logic ...
 
 module.exports = {
@@ -222,14 +255,85 @@ module.exports = {
   getGameMetadata,     // () → { name, minPlayers, maxPlayers, description, icon }
   loadConfig,          // () → config object
   getConfigCopy,       // () → deep-cloned config object
+  getStateForPlayer,   // (state, userId) → player-specific view — see below
 
   // ── Optional ──────────────────────────────────────────────────────
-  getStateForPlayer,   // (state, userId) → filtered state (for hidden-information games)
+  STATE_VERSION,       // number — current state schema version
+  migrate,             // (oldState) → newState — see "State versioning" below
 };
 
 // Throws if any required method is missing
-const { validateImplementation } = require('../../src/game-logic-interface');
 validateImplementation(module.exports);
+```
+
+`initGame` must stamp `stateVersion: STATE_VERSION` on the returned object so the framework can detect future schema drift.
+
+#### getStateForPlayer and hidden information
+
+`getStateForPlayer(state, userId)` is called before every socket emission so that each client receives only the information it is allowed to see.  You **must** implement it for every game.
+
+| Game type | What to do |
+|-----------|-----------|
+| **Perfect information** (Monopoly, Connect Four, Chess) — every player sees the whole board | Use `defaultGetStateForPlayer` exported by the interface module |
+| **Hidden information** (Poker, Coup, Stratego) — players have private cards or roles | Write a real filter that masks other players' private fields |
+
+```js
+// ✓ Perfect-information game — one line, done.
+getStateForPlayer: defaultGetStateForPlayer,
+
+// ✓ Hidden-information game — mask every other player's hand.
+function getStateForPlayer(state, userId) {
+  return {
+    ...state,
+    players: state.players.map(p =>
+      p.userId === userId
+        ? p
+        : { ...p, hand: p.hand.map(() => 'HIDDEN') }
+    ),
+  };
+}
+```
+
+Using `defaultGetStateForPlayer` in a hidden-information game leaks every player's private data to every other player — it is only safe when there is nothing to hide.
+
+#### State versioning
+
+Every `GameState` carries a `stateVersion` field.  When you save a game and later change the state schema, previously persisted games may no longer match your new code.  The framework handles this automatically:
+
+1. On load, `game-manager.js` compares `state.stateVersion` to `STATE_VERSION` exported by the game module.
+2. If they differ and the module exports `migrate`, `migrate(state)` is called and the result is written back to the database.
+3. If they differ and no `migrate` is exported, the framework logs a warning and loads the state as-is.
+4. If `migrate` throws, the game is treated as unloadable and `null` is returned to the caller.
+
+**When to bump `STATE_VERSION`:** any time you add, rename, or remove a field that existing saved games rely on (e.g. adding a required field with no default, changing the type of a field, restructuring a nested object).  Pure logic changes that don't touch the shape of state do not require a bump.
+
+**How to write `migrate`:** chain `if (state.stateVersion < N)` blocks, one per version step, each producing a new state object and stamping the next version.  Throw at the end if the version is still not current (guards against states too old to migrate).
+
+```js
+function migrate(state) {
+  let s = state;
+
+  if (s.stateVersion < 2) {
+    // v1 → v2: players gained an `energy` field defaulting to 10.
+    s = {
+      ...s,
+      players:      s.players.map(p => ({ ...p, energy: 10 })),
+      stateVersion: 2,
+    };
+  }
+
+  if (s.stateVersion < 3) {
+    // v2 → v3: top-level `deck` array replaced the old `hand` field.
+    s = { ...s, deck: s.hand ?? [], stateVersion: 3 };
+    delete s.hand;
+  }
+
+  if (s.stateVersion !== STATE_VERSION) {
+    throw new Error(`No migration path from v${s.stateVersion} to v${STATE_VERSION}`);
+  }
+
+  return s;
+}
 ```
 
 **Key contracts:**
@@ -637,13 +741,32 @@ Each event has `{ type, data, timestamp }`. Clients use these for sounds, animat
 
 ## Security Notes
 
-- **JWT Secret** — set `JWT_SECRET` in the environment before any public-facing deployment. The server logs a warning and uses an insecure default if the variable is absent.
+- **JWT Secret (required)** — the server **refuses to start** if `JWT_SECRET` is not set. There is no built-in default; a predictable or shared secret would let tokens from any other installation be accepted by yours.
+
+  Generate a secret (run once, save the output somewhere safe):
   ```bash
-  JWT_SECRET=<long-random-string> npm start
+  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
   ```
-- **LAN only** — CORS is `*` and the server binds to all interfaces. Do **not** expose this to the public internet without adding HTTPS, rate limiting, and a firewall.
+  Start the server with it:
+  ```bash
+  JWT_SECRET=<paste-secret-here> npm start
+  ```
+  Or export it in your shell profile, process manager, or `.env` file before running `npm start`.
+
+- **LAN-only binding warning** — when the server binds to all interfaces (`HOST=0.0.0.0`, the default) and `NODE_ENV` is not `development`, it logs a prominent warning at startup. CORS is `*` and there is no rate limiting — this server is designed for trusted local networks. Do **not** expose it to the public internet without a TLS-terminating reverse proxy (nginx, Caddy), rate limiting on auth endpoints, and a firewall restricting inbound connections to LAN addresses.
+
+  To bind to localhost only:
+  ```bash
+  HOST=127.0.0.1 npm start
+  ```
+  To silence the warning during local development:
+  ```bash
+  NODE_ENV=development npm start
+  ```
+
 - **Passwords** — hashed with bcrypt at 12 salt rounds; plaintext is never stored or logged.
-- **Server-side validation** — every action is validated on the server before being applied. Clients cannot manipulate state directly or spoof another player's moves.
+
+- **Server-side validation** — every action is validated on the server before being applied. Clients cannot manipulate state directly or forge another player's moves.
 
 ---
 

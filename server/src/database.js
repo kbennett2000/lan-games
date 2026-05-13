@@ -15,10 +15,12 @@ const Database = require('better-sqlite3');
 // ── path setup ───────────────────────────────────────────────────────────────
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_PATH  = path.join(DATA_DIR, 'lan-games.db');
 
-// Ensure the data directory exists before opening the DB
-if (!fs.existsSync(DATA_DIR)) {
+// TEST_DB_PATH=':memory:' lets integration tests use an ephemeral in-memory DB.
+const DB_PATH = process.env.TEST_DB_PATH || path.join(DATA_DIR, 'lan-games.db');
+
+// Only create the data directory when using a real file (not in-memory).
+if (DB_PATH !== ':memory:' && !fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 

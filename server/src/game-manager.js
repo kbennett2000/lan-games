@@ -30,6 +30,33 @@ function getLogic(state) {
 // Map of gameId → GameState (active games only)
 const activeGames = new Map();
 
+// ── per-game action queue ─────────────────────────────────────────────────────
+//
+// All mutations to a single game's state run through withGameLock so that
+// concurrent socket events can never interleave their read-modify-write cycles.
+//
+// Implementation: a promise-chain keyed by gameId.  Each caller replaces the
+// map entry with its own "I'm done" promise (mine), then awaits the previous
+// tail (prev).  This gives FIFO serialisation with no external dependencies.
+//
+// Cleanup: if no task queued behind us, we delete the entry to avoid leaks.
+
+const _locks = new Map(); // gameId → Promise (tail of that game's queue)
+
+async function withGameLock(gameId, fn) {
+  const prev = _locks.get(gameId) ?? Promise.resolve();
+  let release;
+  const mine = new Promise(r => (release = r));
+  _locks.set(gameId, mine);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (_locks.get(gameId) === mine) _locks.delete(gameId);
+  }
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function persist(state) {
@@ -62,15 +89,16 @@ function createGame(name, hostUserId, gameType = 'monopoly', configOverrides = {
 
   // Minimal waiting-room state — no game-specific fields yet
   const placeholderState = {
-    id:        gameId,
+    id:           gameId,
     name,
     gameType,
-    createdBy: hostUserId,
-    status:    'waiting',
+    createdBy:    hostUserId,
+    status:       'waiting',
+    stateVersion: logic.STATE_VERSION,
     config,
     minPlayers,
     maxPlayers,
-    players:   [],
+    players:      [],
   };
 
   database.createGame(gameId, name, hostUserId, placeholderState, config, gameType);
@@ -99,6 +127,37 @@ function loadGame(gameId) {
   }
   if (!row.state.gameType && row.game_type) {
     row.state.gameType = row.game_type;
+  }
+
+  // Back-fill stateVersion for states persisted before versioning was
+  // introduced.  Treat them as v1 (the first versioned release) so they are
+  // not flagged as needing migration when the current version is also 1.
+  if (row.state.stateVersion === undefined) {
+    row.state.stateVersion = 1;
+  }
+
+  // Run the game's migration function if the persisted version is behind.
+  const logic = getLogic(row.state);
+  if (row.state.stateVersion !== logic.STATE_VERSION) {
+    if (typeof logic.migrate !== 'function') {
+      console.warn(
+        `[game-manager] Game ${gameId} has stateVersion ${row.state.stateVersion} but ` +
+        `current is ${logic.STATE_VERSION}; no migrate() defined — loading as-is.`,
+      );
+    } else {
+      try {
+        row.state = logic.migrate(row.state);
+        persist(row.state);
+        console.log(
+          `[game-manager] Migrated game ${gameId} to stateVersion ${logic.STATE_VERSION}`,
+        );
+      } catch (err) {
+        console.error(
+          `[game-manager] Migration failed for game ${gameId}: ${err.message}`,
+        );
+        return null;
+      }
+    }
   }
 
   activeGames.set(gameId, row.state);
@@ -200,21 +259,19 @@ function startGame(gameId, hostUserId) {
  * @param {object} [payload]  Additional data for the action
  * @returns {{ state, events, error? }}
  */
-function applyAction(gameId, userId, action, payload = {}) {
-  const state = getGame(gameId);
-  if (!state) return { state: null, events: [], error: 'Game not found' };
-  if (state.status !== 'playing') return { state, events: [], error: 'Game is not in playing state' };
+async function applyAction(gameId, userId, action, payload = {}) {
+  return withGameLock(gameId, () => {
+    const state = getGame(gameId);
+    if (!state) return { state: null, events: [], error: 'Game not found' };
+    if (state.status !== 'playing') return { state, events: [], error: 'Game is not in playing state' };
 
-  const result = getLogic(state).applyAction(state, userId, action, payload);
+    const result = getLogic(state).applyAction(state, userId, action, payload);
+    if (result.error) return { state, events: [], error: result.error };
 
-  if (result.error) {
-    return { state, events: [], error: result.error };
-  }
-
-  activeGames.set(gameId, result.state);
-  persist(result.state);
-
-  return { state: result.state, events: result.events };
+    activeGames.set(gameId, result.state);
+    persist(result.state);
+    return { state: result.state, events: result.events };
+  });
 }
 
 /**
@@ -235,27 +292,30 @@ function deleteGame(gameId, userId) {
 /**
  * Resume a paused game, setting its status back to 'playing'.
  */
-function resumeGame(gameId) {
-  const state = getGame(gameId);
-  if (!state || state.status !== 'paused') return;
-  state.status = 'playing';
-  persist(state);
+async function resumeGame(gameId) {
+  return withGameLock(gameId, () => {
+    const state = getGame(gameId);
+    if (!state || state.status !== 'paused') return;
+    state.status = 'playing';
+    persist(state);
+  });
 }
 
 /**
  * Save (pause) a game so it can be resumed later.
  */
-function saveGame(gameId, userId) {
-  const state = getGame(gameId);
-  if (!state) return { error: 'Game not found' };
+async function saveGame(gameId, userId) {
+  return withGameLock(gameId, () => {
+    const state = getGame(gameId);
+    if (!state) return { error: 'Game not found' };
 
-  const dbGame = database.getGameById(gameId);
-  if (dbGame.created_by !== userId) return { error: 'Only the host can save the game' };
+    const dbGame = database.getGameById(gameId);
+    if (dbGame.created_by !== userId) return { error: 'Only the host can save the game' };
 
-  state.status = 'paused';
-  persist(state);
-
-  return { success: true };
+    state.status = 'paused';
+    persist(state);
+    return { success: true };
+  });
 }
 
 /**
@@ -263,12 +323,14 @@ function saveGame(gameId, userId) {
  * property and the game continues; their turn is skipped after a timeout
  * (handled externally by the socket handler).
  */
-function setPlayerConnected(gameId, userId, connected) {
-  const state = getGame(gameId);
-  if (!state) return;
-  const player = state.players.find(p => p.userId === userId);
-  if (player) player.connected = connected;
-  persist(state);
+async function setPlayerConnected(gameId, userId, connected) {
+  return withGameLock(gameId, () => {
+    const state = getGame(gameId);
+    if (!state) return;
+    const player = state.players.find(p => p.userId === userId);
+    if (player) player.connected = connected;
+    persist(state);
+  });
 }
 
 /**

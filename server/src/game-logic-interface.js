@@ -318,36 +318,137 @@
  * const state = GameLogic.initGame(gameId, name, players, cfg);
  */
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  OPTIONAL METHODS
-// ═════════════════════════════════════════════════════════════════════════════
-
 /**
- * getStateForPlayer(state, userId) → Object   [OPTIONAL]
- * ────────────────────────────────────────────
- * Return a filtered view of `state` safe to send to the given player.  Use
- * this for games with hidden information (e.g. hidden hands in a card game).
+ * getStateForPlayer(state, userId) → Object
+ * ──────────────────────────────────────────
+ * Return the view of `state` that is safe to send to `userId`.  The framework
+ * calls this before every `game:state` and `game:update` emission so that each
+ * client only receives the information it is allowed to see.
  *
- * If this method is NOT exported, the framework sends the full `state` to
- * every client — appropriate for games (like Monopoly) with no hidden state.
+ * ⚠ Security responsibility
+ * ─────────────────────────
+ * This method is the ONLY defence against players reading each other's private
+ * information (hole cards in Poker, role card in Coup, …).  If you implement a
+ * hidden-information game you MUST strip or mask private fields here.  Returning
+ * the full state unmodified leaks every other player's private data to every
+ * client.
+ *
+ * For perfect-information games (Monopoly, Connect Four, Chess, …) where every
+ * player sees the complete board, use the provided helper:
+ *
+ *   const { defaultGetStateForPlayer } = require('../../src/game-logic-interface');
+ *   // ...
+ *   module.exports = { ..., getStateForPlayer: defaultGetStateForPlayer };
+ *
+ * `defaultGetStateForPlayer` returns the full state unchanged.  It is only safe
+ * because there is nothing to hide in a perfect-information game.
  *
  * Preconditions:
  *   • `userId` identifies a player who is (or was) in the game.
- *   • The returned object must still be a valid, JSON-serialisable state.
+ *   • The returned object MUST be a valid, JSON-serialisable state; the
+ *     framework passes it directly to `JSON.stringify` for the socket payload.
+ *   • Do NOT mutate `state` — return a new object if you need to omit fields.
  *
- * @param {Object} state  - Full canonical game state.
+ * @param {Object} state  - Full canonical game state (server's authoritative copy).
  * @param {string} userId - ID of the player who will receive this state.
- * @returns {Object} A player-specific view of the state.
+ * @returns {Object} A player-specific (possibly filtered) view of the state.
  *
  * @example
- * // Reveal only the player's own hand:
- * return {
- *   ...state,
- *   players: state.players.map(p =>
- *     p.userId === userId ? p : { ...p, hand: p.hand.map(() => 'HIDDEN') }
- *   ),
- * };
+ * // Hidden-information game: conceal every other player's hand.
+ * function getStateForPlayer(state, userId) {
+ *   return {
+ *     ...state,
+ *     players: state.players.map(p =>
+ *       p.userId === userId
+ *         ? p
+ *         : { ...p, hand: p.hand.map(() => 'HIDDEN') }
+ *     ),
+ *   };
+ * }
+ *
+ * @example
+ * // Perfect-information game: use the provided default.
+ * const { defaultGetStateForPlayer } = require('../../src/game-logic-interface');
+ * module.exports = { ..., getStateForPlayer: defaultGetStateForPlayer };
  */
+
+/**
+ * migrate(state) → Object   [OPTIONAL]
+ * ──────────────────────────────────────
+ * Upgrade a persisted state from an older `stateVersion` to the current
+ * `STATE_VERSION`.  The framework calls this automatically when it loads a
+ * saved game whose `state.stateVersion` differs from the module's
+ * `STATE_VERSION` constant.  If `migrate` is not exported and a version
+ * mismatch is detected, the framework logs a warning and loads the state as-is.
+ *
+ * Contract:
+ *   • The function receives a state at any version strictly less than
+ *     `STATE_VERSION`.  It MUST return a state whose `stateVersion` equals
+ *     `STATE_VERSION`.
+ *   • Migrations MUST be chained internally — a single call upgrades through
+ *     all intermediate versions.  Example for a module at v3:
+ *
+ *       if (s.stateVersion < 2) {
+ *         s = { ...s, newField: defaultValue, stateVersion: 2 };
+ *       }
+ *       if (s.stateVersion < 3) {
+ *         s = { ...s, anotherField: derived(s), stateVersion: 3 };
+ *       }
+ *
+ *   • The function MUST throw if migration is not possible (state is
+ *     corrupted or the version gap is too large).  The framework will then
+ *     refuse to load the game rather than run it on a broken state.
+ *   • The function MUST NOT mutate the input — return a new object.
+ *   • The framework re-persists the returned state automatically, so the
+ *     migrated version is written to the database after a successful upgrade.
+ *
+ * `STATE_VERSION` is a plain numeric constant exported alongside the methods:
+ *
+ *   const STATE_VERSION = 1;   // bump when the state shape changes incompatibly
+ *   // ... in initGame:
+ *   return { ...state, stateVersion: STATE_VERSION };
+ *   // ... export:
+ *   module.exports = { ..., STATE_VERSION, migrate };
+ *
+ * @param   {Object} state  Persisted state with `stateVersion < STATE_VERSION`.
+ *                          Do NOT mutate this object.
+ * @returns {Object}        New state object with `stateVersion === STATE_VERSION`.
+ * @throws  {Error}         If the state cannot be migrated (corrupted / too old).
+ *
+ * @example
+ * function migrate(state) {
+ *   let s = state;
+ *   if (s.stateVersion < 2) {
+ *     // v1 → v2: players gained an `energy` field defaulting to 10.
+ *     s = {
+ *       ...s,
+ *       players: s.players.map(p => ({ ...p, energy: 10 })),
+ *       stateVersion: 2,
+ *     };
+ *   }
+ *   return s;   // stateVersion === STATE_VERSION
+ * }
+ */
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DEFAULT HELPERS
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Default implementation of `getStateForPlayer` for perfect-information games.
+ *
+ * Returns the full, unfiltered state.  Safe ONLY when every player is allowed
+ * to see the entire game state (Monopoly, Connect Four, Chess, …).  Do NOT use
+ * this for games with hidden information (Poker, Coup, Stratego, …) — implement
+ * a real filter instead.
+ *
+ * @param {Object} state  - Full canonical game state.
+ * @param {string} _userId - Ignored; all players see the same state.
+ * @returns {Object} The state object, unchanged.
+ */
+function defaultGetStateForPlayer(state, _userId) {
+  return state;
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  RUNTIME VALIDATOR
@@ -364,10 +465,14 @@ const REQUIRED_METHODS = [
   'getGameMetadata',
   'loadConfig',
   'getConfigCopy',
+  'getStateForPlayer',
 ];
 
 const OPTIONAL_METHODS = [
-  'getStateForPlayer',
+  'migrate',
+  // STATE_VERSION is a plain numeric constant, not a function, so it is not
+  // listed here and is not validated.  It must equal state.stateVersion for
+  // any state produced by this module's initGame.
 ];
 
 /**
@@ -413,6 +518,7 @@ function validateImplementation(module, options = {}) {
 
 module.exports = {
   validateImplementation,
+  defaultGetStateForPlayer,
   REQUIRED_METHODS,
   OPTIONAL_METHODS,
 };

@@ -3,25 +3,33 @@
  *
  * Pure Monopoly game engine.  All functions are side-effect free: they accept
  * a game state object, return a NEW state object and an array of event objects
- * that describe what happened.  The caller (game-manager / socket-handler) is
+ * that described what happened.  The caller (game-manager / socket-handler) is
  * responsible for persisting the state and broadcasting events.
+ *
+ * ─── State versioning ────────────────────────────────────────────────────────
+ *
+ * STATE_VERSION must be bumped whenever the shape of GameState changes in a
+ * way that is incompatible with states persisted at an older version.
+ * game-manager.js detects the mismatch on load and calls migrate() to upgrade
+ * the stored state before handing it to the rest of the framework.
  *
  * ─── State shape ─────────────────────────────────────────────────────────────
  *
  * GameState {
- *   id        : string            game UUID
- *   name      : string
- *   status    : 'waiting' | 'playing' | 'paused' | 'finished'
- *   config    : GameConfig        embedded copy of config-loader output
- *   players   : Player[]
- *   properties: { [position]: PropertyState }
- *   turnState : TurnState
- *   auction   : Auction | null
- *   trade     : Trade | null
- *   chanceDeck: number[]          indices into config.cards.chance (shuffled)
- *   chestDeck : number[]          indices into config.cards.communityChest
- *   freeParking: number           money in the free parking pot (if rule enabled)
- *   log       : LogEntry[]
+ *   id           : string            game UUID
+ *   name         : string
+ *   stateVersion : number            must equal STATE_VERSION
+ *   status       : 'waiting' | 'playing' | 'paused' | 'finished'
+ *   config       : GameConfig        embedded copy of config-loader output
+ *   players      : Player[]
+ *   properties   : { [position]: PropertyState }
+ *   turnState    : TurnState
+ *   auction      : Auction | null
+ *   trade        : Trade | null
+ *   chanceDeck   : number[]          indices into config.cards.chance (shuffled)
+ *   chestDeck    : number[]          indices into config.cards.communityChest
+ *   freeParking  : number            money in the free parking pot (if rule enabled)
+ *   log          : LogEntry[]
  * }
  *
  * Player {
@@ -76,6 +84,11 @@
 'use strict';
 
 const configLoader = require('./config-loader');
+
+// Bump this whenever the GameState shape changes incompatibly.
+// game-manager.js will call migrate() for any saved game whose
+// stateVersion doesn't match.
+const STATE_VERSION = 1;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -581,9 +594,10 @@ function initGame(gameId, gameName, playerList, config) {
   }));
 
   return {
-    id:     gameId,
-    name:   gameName,
-    status: 'playing',
+    id:           gameId,
+    name:         gameName,
+    stateVersion: STATE_VERSION,
+    status:       'playing',
     config,
     players,
     properties,
@@ -1623,16 +1637,33 @@ function getConfigCopy() {
   return configLoader.getConfigCopy();
 }
 
+const { defaultGetStateForPlayer } = require('../../src/game-logic-interface');
+
 /**
- * Monopoly has no hidden information — every player sees the full state.
- * This identity implementation satisfies the optional interface method.
+ * Upgrade a persisted state to the current STATE_VERSION.
+ * Add a new `if` branch for each version bump.  See game-logic-interface.js
+ * for the full contract.
+ *
+ * @param   {Object} state  Saved state with stateVersion < STATE_VERSION.
+ * @returns {Object}        New state with stateVersion === STATE_VERSION.
+ * @throws  {Error}         If no migration path exists for the given version.
  */
-function getStateForPlayer(state, _userId) {
-  return state;
+function migrate(state) {
+  // No structural changes yet — STATE_VERSION 1 is the initial release.
+  // Future migrations follow this pattern:
+  //
+  //   if (state.stateVersion < 2) {
+  //     state = { ...state, newField: defaultValue, stateVersion: 2 };
+  //   }
+
+  throw new Error(
+    `[monopoly] No migration path from stateVersion ${state.stateVersion} to ${STATE_VERSION}`,
+  );
 }
 
 module.exports = {
   // ── GameLogic interface methods ──────────────────────────────────────────
+  STATE_VERSION,
   initGame,
   createInitialPlayer,
   applyAction,
@@ -1643,7 +1674,8 @@ module.exports = {
   getGameMetadata,
   loadConfig,
   getConfigCopy,
-  getStateForPlayer,
+  getStateForPlayer: defaultGetStateForPlayer,
+  migrate,
 
   // ── Internal functions (kept for game-manager compatibility & tests) ─────
   rollDice,

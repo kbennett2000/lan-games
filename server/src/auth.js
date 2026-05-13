@@ -12,15 +12,13 @@ const jwt    = require('jsonwebtoken');
 
 // ── configuration ─────────────────────────────────────────────────────────────
 
-// In production, set JWT_SECRET in an environment variable.
-// The server will warn on startup if a default is used.
-const JWT_SECRET  = process.env.JWT_SECRET || 'lan-games-dev-secret-change-in-production';
+// JWT_SECRET is guaranteed to be set by the startup pre-flight check in index.js.
+// There is intentionally no fallback — an undefined secret causes jwt.sign/verify
+// to throw immediately, ensuring misconfiguration is never silently tolerated.
+const JWT_SECRET  = process.env.JWT_SECRET;
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
-const SALT_ROUNDS = 12;
-
-if (!process.env.JWT_SECRET) {
-  console.warn('[auth] WARNING: JWT_SECRET is not set. Using insecure default. Set JWT_SECRET in your environment for production.');
-}
+// BCRYPT_ROUNDS can be lowered (e.g. to 4) in integration tests for faster hashing.
+const SALT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 12;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

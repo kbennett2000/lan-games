@@ -10,22 +10,44 @@
  * ─────────────────────
  *   PORT        TCP port to listen on (default: 3000)
  *   HOST        Bind address (default: 0.0.0.0 — all interfaces)
- *   JWT_SECRET  Secret for signing JWTs  (CHANGE THIS in production!)
+ *   JWT_SECRET  Secret for signing JWTs  (REQUIRED — no default)
  *   JWT_EXPIRES Token lifetime          (default: 7d)
+ *   NODE_ENV    Set to 'development' to suppress the LAN-binding warning
  */
 
 'use strict';
 
-const path   = require('path');
-const http   = require('http');
-const express = require('express');
-const cors    = require('cors');
-const { Server: SocketIO } = require('socket.io');
+// ── pre-flight checks ─────────────────────────────────────────────────────────
+// These run before any module that depends on environment variables is required.
 
-const authRoutes      = require('./routes/auth.routes');
-const gameRoutes      = require('./routes/game.routes');
-const socketHandler   = require('./socket-handler');
-const gameRegistry    = require('./game-registry');
+if (!process.env.JWT_SECRET) {
+  console.error(`
+[auth] FATAL: JWT_SECRET environment variable is not set.
+
+  The server requires a secret key to sign and verify authentication tokens.
+  There is no built-in default — a shared or predictable secret would allow
+  tokens issued by any other instance to be accepted by this one.
+
+  Generate a secure random secret (run this once and save the output):
+
+    node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+
+  Then start the server with the secret:
+
+    JWT_SECRET=<paste-secret-here> npm start
+
+  Or export it in your shell profile / process manager / .env file:
+
+    export JWT_SECRET=<paste-secret-here>
+    npm start
+`);
+  process.exit(1);
+}
+
+// ── imports ───────────────────────────────────────────────────────────────────
+
+const gameRegistry = require('./game-registry');
+const { createServer } = require('./app');
 
 // ── validate all registered game configs on startup ──────────────────────────
 
@@ -39,55 +61,9 @@ try {
   process.exit(1);
 }
 
-// ── Express app ──────────────────────────────────────────────────────────────
+// ── build the server ──────────────────────────────────────────────────────────
 
-const app = express();
-
-// Parse JSON bodies
-app.use(express.json({ limit: '1mb' }));
-
-// CORS: allow all origins on LAN (tighten this for public deployments)
-app.use(cors({ origin: '*', credentials: true }));
-
-// ── REST routes ──────────────────────────────────────────────────────────────
-
-app.use('/api/auth',  authRoutes);
-app.use('/api/games', gameRoutes);
-
-// Config endpoint (convenience alias — monopoly default config)
-app.get('/api/config', (req, res) => {
-  try {
-    res.json({ config: gameRegistry.getGameLogic('monopoly').getConfigCopy() });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Serve static client files ────────────────────────────────────────────────
-
-const CLIENT_DIR = path.join(__dirname, '..', '..', 'client');
-app.use(express.static(CLIENT_DIR));
-
-// Single-page application fallback — any unmatched GET returns index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(CLIENT_DIR, 'index.html'));
-});
-
-// ── HTTP + Socket.io server ──────────────────────────────────────────────────
-
-const httpServer = http.createServer(app);
-
-const io = new SocketIO(httpServer, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-  // Increase the ping timeout so LAN players on slow links don't get dropped
-  pingTimeout:  60000,
-  pingInterval: 25000,
-});
-
-socketHandler.registerHandlers(io);
+const { httpServer, io } = createServer();
 
 // ── start listening ──────────────────────────────────────────────────────────
 
@@ -99,6 +75,19 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`\n🎲  LAN Games server running on port ${PORT} (${iface})`);
   console.log(`   Open http://localhost:${PORT} in your browser`);
   console.log(`   LAN players can connect via http://<your-ip>:${PORT}\n`);
+
+  if (HOST === '0.0.0.0' && process.env.NODE_ENV !== 'development') {
+    console.warn(
+      '  ⚠  WARNING: Server is bound to all network interfaces (0.0.0.0).\n' +
+      '     This server is designed for trusted local networks only.\n' +
+      '     Do NOT expose it to the public internet without:\n' +
+      '       • HTTPS (TLS via a reverse proxy such as nginx or Caddy)\n' +
+      '       • Rate limiting on auth endpoints\n' +
+      '       • A firewall restricting inbound connections to LAN addresses\n' +
+      '     To bind to localhost only:  HOST=127.0.0.1 npm start\n' +
+      '     To suppress this warning:   NODE_ENV=development npm start\n'
+    );
+  }
 });
 
 // ── graceful shutdown ────────────────────────────────────────────────────────

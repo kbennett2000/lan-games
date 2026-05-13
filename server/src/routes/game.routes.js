@@ -184,8 +184,8 @@ router.post('/:id/start', (req, res) => {
 
 // ── POST /api/games/:id/save ─────────────────────────────────────────────────
 
-router.post('/:id/save', (req, res) => {
-  const result = gameManager.saveGame(req.params.id, req.user.sub);
+router.post('/:id/save', async (req, res) => {
+  const result = await gameManager.saveGame(req.params.id, req.user.sub);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ success: true });
 });

@@ -1,0 +1,17 @@
+services:
+  server:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # SQLite database — persists between restarts and survives image rebuilds.
+      - db-data:/app/server/data
+    # Reads JWT_SECRET (required) and any optional overrides from .env at the
+    # repo root.  See the Security Notes section of README.md for how to
+    # generate a JWT_SECRET.
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  db-data:
