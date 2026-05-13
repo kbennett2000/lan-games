@@ -5,7 +5,9 @@
  * listeners.  Runs after the page loads.
  *
  * Module load order (see index.html):
+ *   renderer-interface.js → renderer-registry.js →
  *   api.js → game-state.js → board-renderer.js → ui-manager.js →
+ *   games/connect-four/renderer.js → games/monopoly/renderer.js →
  *   socket-client.js → app.js
  */
 
@@ -287,8 +289,7 @@
       prevRenderer.destroy();
       GameRendererRegistry.clearActive();
     }
-    // Reset board area for the Monopoly (non-registry) path, and as a
-    // safety net after destroy() in case game type is switching.
+    // Restore neutral board state (safety net for first join and game-type switches).
     const monoBoard = document.getElementById('board');
     const cfWrapper = document.getElementById('connect-four-wrapper');
     if (monoBoard) monoBoard.style.display = '';
@@ -304,18 +305,9 @@
       GameRendererRegistry.setActive(renderer);
       renderer.init(document.querySelector('.board-wrapper'), state, myUserId, emitAction);
       renderer.update(state);
-      UIManager.updatePlayerPanels(state);
-      UIManager.updateTurnIndicator(state, myUserId);
-    } else {
-      // Monopoly (pre-migration legacy path)
-      BoardRenderer.buildBoard(state.config.board, (pos) => {
-        UIManager.showPropertyModal(pos, GameState.getState(), myUserId, SocketClient.getPropertyHandlers());
-      });
-      BoardRenderer.update(state);
-      UIManager.updatePlayerPanels(state);
-      UIManager.updateTurnIndicator(state, myUserId);
-      UIManager.updateActionPanel(state, myUserId, SocketClient.getActionHandlers());
     }
+    UIManager.updatePlayerPanels(state);
+    UIManager.updateTurnIndicator(state, myUserId);
 
     UIManager.appendLogsFromState(state);
   }
@@ -349,46 +341,8 @@
     }
   });
 
-  // Close property modal
-  document.getElementById('close-property-modal').addEventListener('click', UIManager.closePropertyModal);
-
-  // Close my-properties modal
-  document.getElementById('close-my-props-modal').addEventListener('click', UIManager.closeMyPropertiesModal);
-
-  // ── Trade modal ──────────────────────────────────────────────────────────
-
-  document.getElementById('close-trade-modal').addEventListener('click', UIManager.closeTrade);
-  document.getElementById('cancel-trade-modal-btn').addEventListener('click', UIManager.closeTrade);
-
-  document.getElementById('send-trade-btn').addEventListener('click', () => {
-    const toUserId      = document.getElementById('trade-target-player').value;
-    const offerMoney    = Number(document.getElementById('trade-offer-money').value)   || 0;
-    const offerCards    = Number(document.getElementById('trade-offer-cards').value)   || 0;
-    const requestMoney  = Number(document.getElementById('trade-request-money').value) || 0;
-    const requestCards  = Number(document.getElementById('trade-request-cards').value) || 0;
-    const offerProps    = UIManager.getCheckedTradeProps('trade-offer-props');
-    const requestProps  = UIManager.getCheckedTradeProps('trade-request-props');
-
-    if (!toUserId) {
-      UIManager.showError('trade-error', 'Please select a player to trade with');
-      return;
-    }
-
-    SocketClient.sendTrade({ toUserId, offerMoney, offerProps, offerCards, requestMoney, requestProps, requestCards });
-    UIManager.closeTrade();
-  });
-
-  // ── Incoming trade modal ─────────────────────────────────────────────────
-
-  document.getElementById('accept-trade-btn').addEventListener('click', () => {
-    SocketClient.acceptTrade();
-    UIManager.closeIncomingTrade();
-  });
-
-  document.getElementById('reject-trade-btn').addEventListener('click', () => {
-    SocketClient.rejectTrade();
-    UIManager.closeIncomingTrade();
-  });
+  // Property modal, trade modals, and incoming trade buttons are wired by the
+  // Monopoly renderer in its init() and removed in destroy().
 
   // ── Chat ─────────────────────────────────────────────────────────────────
 

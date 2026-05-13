@@ -153,16 +153,11 @@ const SocketClient = (() => {
       const gameScreenActive = document.getElementById('game-screen').classList.contains('active');
       if (!gameScreenActive) {
         UIManager.showScreen('game-screen');
-        // Build the game-type-appropriate board (only once per game join).
+        // Init the renderer for this game type (only once per game join).
         const renderer = GameRendererRegistry.get(state.gameType);
         if (renderer) {
           GameRendererRegistry.setActive(renderer);
           renderer.init(document.querySelector('.board-wrapper'), state, myUserId, action);
-        } else {
-          // Monopoly (pre-migration legacy path)
-          BoardRenderer.buildBoard(state.config.board, (pos) => {
-            UIManager.showPropertyModal(pos, GameState.getState(), myUserId, getPropertyHandlers());
-          });
         }
         UIManager.appendLogsFromState(state);
       }
@@ -171,21 +166,7 @@ const SocketClient = (() => {
     if (state.status === 'playing') {
       UIManager.updatePlayerPanels(state);
       UIManager.updateTurnIndicator(state, myUserId);
-
-      const renderer = GameRendererRegistry.getActive();
-      if (renderer) {
-        renderer.update(state);
-      } else {
-        // Monopoly (pre-migration legacy path)
-        BoardRenderer.update(state);
-        UIManager.updateActionPanel(state, myUserId, getActionHandlers());
-
-        if (state.trade && state.trade.status === 'pending' && state.trade.toUserId === myUserId) {
-          UIManager.showIncomingTrade(state, myUserId);
-        } else {
-          UIManager.closeIncomingTrade();
-        }
-      }
+      GameRendererRegistry.getActive()?.update(state);
     }
 
     if (state.status === 'finished') {
@@ -207,8 +188,6 @@ const SocketClient = (() => {
   // ── game event visual handler ──────────────────────────────────────────────
 
   function handleGameEvent(ev, state) {
-    const myUsername = GameState.getUser()?.username;
-
     // Deliver to the active renderer first (handles game-specific events
     // such as ACTION_REJECTED, PIECE_DROPPED, and game-specific GAME_OVER logs).
     const activeRenderer = GameRendererRegistry.getActive();
@@ -229,101 +208,6 @@ const SocketClient = (() => {
         return;
     }
 
-    // If there is an active renderer it handled game-specific events above; skip the legacy path.
-    if (activeRenderer) return;
-
-    // ── Monopoly (pre-migration) legacy event handling ─────────────────────
-    switch (ev.type) {
-      case 'DICE_ROLLED':
-        SoundManager.playDice();
-        break;
-      case 'PLAYER_MOVED':
-        BoardRenderer.flashSquare(ev.data.to);
-        break;
-      case 'PLAYER_LANDED':
-        UIManager.appendLog(`${ev.data.username} landed on ${ev.data.squareName}`, 'move');
-        break;
-      case 'PASSED_GO':
-        SoundManager.playBigCollect();
-        break;
-      case 'PLAYER_JAILED':
-        UIManager.appendLog(`🚔 ${ev.data.username} was sent to Jail!`, 'jail');
-        SoundManager.playJail();
-        break;
-      case 'PLAYER_FREED_FROM_JAIL':
-        UIManager.appendLog(`${ev.data.username} got out of Jail`, 'jail');
-        SoundManager.playFreeJail();
-        break;
-      case 'JAIL_FINE_PAID':
-        SoundManager.playPay(false);
-        break;
-      case 'PROPERTY_BOUGHT':
-        UIManager.appendLog(`${ev.data.username} bought ${ev.data.name} for $${ev.data.price}`, 'property');
-        SoundManager.playBuy();
-        break;
-      case 'AUCTION_STARTED':
-        UIManager.appendLog(`🔔 Auction: ${ev.data.name} (min bid $${ev.data.minBid})`, 'auction');
-        break;
-      case 'AUCTION_WON':
-        UIManager.appendLog(`${ev.data.username} won ${ev.data.name} at auction for $${ev.data.amount}`, 'auction');
-        if (ev.data.username === myUsername) SoundManager.playBigCollect();
-        else                                 SoundManager.playBuy();
-        break;
-      case 'MONOPOLY_ACHIEVED':
-        UIManager.appendLog(`🏆 ${ev.data.username} has a monopoly on ${ev.data.colorGroup}!`, 'property');
-        SoundManager.playMonopoly();
-        break;
-      case 'RENT_PAID': {
-        UIManager.appendLog(`${ev.data.from} paid $${ev.data.amount} rent to ${ev.data.to}`, 'money');
-        const big = ev.data.amount >= 100;
-        if (ev.data.to   === myUsername) SoundManager.playCollect();
-        else if (ev.data.from === myUsername) SoundManager.playPay(big);
-        break;
-      }
-      case 'FREE_PARKING_COLLECTED':
-        UIManager.appendLog(`🅿 ${ev.data.username} collected $${ev.data.amount} from Free Parking!`, 'money');
-        SoundManager.playBigCollect();
-        break;
-      case 'MONEY_RECEIVED':
-        UIManager.appendLog(`${ev.data.username} collected $${ev.data.amount}`, 'money');
-        if (ev.data.username === myUsername) SoundManager.playCollect();
-        break;
-      case 'CARD_DRAWN':
-        UIManager.appendLog(`🃏 ${ev.data.username}: "${ev.data.card.text}"`, 'card');
-        SoundManager.playCard();
-        break;
-      case 'BUILDING_BUILT':
-        UIManager.appendLog(`🏠 ${ev.data.username} built a ${ev.data.buildingType} on ${ev.data.name}`, 'property');
-        SoundManager.playBuild();
-        break;
-      case 'BUILDING_SOLD':
-        UIManager.appendLog(`${ev.data.username} sold a ${ev.data.buildingType} on ${ev.data.name} for $${ev.data.sellPrice}`, 'property');
-        break;
-      case 'PROPERTY_MORTGAGED':
-        UIManager.appendLog(`${ev.data.username} mortgaged ${ev.data.name}`, 'property');
-        break;
-      case 'PROPERTY_UNMORTGAGED':
-        UIManager.appendLog(`${ev.data.username} unmortgaged ${ev.data.name}`, 'property');
-        break;
-      case 'TRADE_OFFERED':
-        UIManager.appendLog(`🤝 ${ev.data.from} offered a trade to ${ev.data.to}`, 'trade');
-        break;
-      case 'TRADE_ACCEPTED':
-        UIManager.appendLog(`Trade between ${ev.data.from} and ${ev.data.to} completed`, 'trade');
-        SoundManager.playCollect();
-        break;
-      case 'TRADE_REJECTED':
-        UIManager.appendLog(`${ev.data.to} rejected ${ev.data.from}'s trade`, 'trade');
-        break;
-      case 'PLAYER_BANKRUPT':
-        UIManager.appendLog(`💸 ${ev.data.username} is bankrupt!`, 'game');
-        SoundManager.playBankrupt();
-        break;
-      case 'GAME_OVER':
-        UIManager.appendLog(ev.data.winner ? `🏆 ${ev.data.winner} wins the game!` : "🤝 It's a draw!", 'game');
-        SoundManager.playGameOver();
-        break;
-    }
   }
 
   // ── action emitters ────────────────────────────────────────────────────────
@@ -335,54 +219,6 @@ const SocketClient = (() => {
 
   function action(name, payload = {}) {
     emit('game:action', { action: name, ...payload });
-  }
-
-  function getActionHandlers() {
-    return {
-      rollDice:           () => action('rollDice'),
-      buyProperty:        () => action('buyProperty'),
-      declinePurchase:    () => action('declinePurchase'),
-      placeBid:      (amt) => action('placeBid', { amount: amt }),
-      passAuction:        () => action('passAuction'),
-      endTurn:            () => action('endTurn'),
-      payJailFine:        () => action('payJailFine'),
-      useJailCard:        () => action('useJailCard'),
-      openPropertyModal:  () => showMyPropertiesModal(),
-      openTradeModal:     () => UIManager.showTradeModal(GameState.getState(), GameState.getUser()?.id),
-      declareBankruptcy:  () => {
-        if (confirm('Are you sure you want to declare bankruptcy? You will be eliminated from the game.')) {
-          action('declareBankruptcy');
-        }
-      },
-    };
-  }
-
-  function getPropertyHandlers() {
-    return {
-      buildHouse:         (pos) => action('buildHouse', { position: pos }),
-      sellHouse:          (pos) => action('sellHouse', { position: pos }),
-      mortgageProperty:   (pos) => action('mortgageProperty', { position: pos }),
-      unmortgageProperty: (pos) => action('unmortgageProperty', { position: pos }),
-    };
-  }
-
-  // Show a modal listing all my properties for management
-  function showMyPropertiesModal() {
-    const state    = GameState.getState();
-    const myUserId = GameState.getUser()?.id;
-    if (!state || !myUserId) return;
-
-    const myProps = Object.keys(state.properties)
-      .filter(pos => state.properties[pos].ownerId === myUserId)
-      .map(Number)
-      .sort((a, b) => a - b);
-
-    if (myProps.length === 0) {
-      UIManager.appendLog('You own no properties.', 'info');
-      return;
-    }
-
-    UIManager.showMyPropertiesModal(myProps, state, myUserId, getPropertyHandlers());
   }
 
   // ── lobby / game room socket events ───────────────────────────────────────
@@ -414,11 +250,6 @@ const SocketClient = (() => {
 
   function sendChat(text) { emit('chat:message', { text }); }
 
-  function sendTrade(payload) { action('offerTrade', payload); }
-  function acceptTrade()      { action('acceptTrade'); }
-  function rejectTrade()      { action('rejectTrade'); }
-  function cancelTrade()      { action('cancelTrade'); }
-
   function onLobbyUpdate(fn) { _onLobbyUpdate = fn; }
 
   // ── host id helper ─────────────────────────────────────────────────────────
@@ -439,14 +270,8 @@ const SocketClient = (() => {
     saveGame,
     leaveRoom,
     sendChat,
-    sendTrade,
-    acceptTrade,
-    rejectTrade,
-    cancelTrade,
     setHostId,
     getHostId,
-    getActionHandlers,
-    getPropertyHandlers,
     emitAction: (name, payload = {}) => action(name, payload),
   };
 
