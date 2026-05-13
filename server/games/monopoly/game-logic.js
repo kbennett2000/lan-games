@@ -75,6 +75,8 @@
 
 'use strict';
 
+const configLoader = require('./config-loader');
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function clone(obj) {
@@ -1414,8 +1416,236 @@ function skipTurn(state, userId) {
 
 // ── exports ───────────────────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  GameLogic interface implementation
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create a lobby player record from a user account object.
+ *
+ * @param {Object}   user            - { id, username }
+ * @param {Object[]} [existingPlayers] - Players already in the lobby; used to
+ *   pick the next available color and token slot.
+ * @param {Object}   [config]        - Game config (settings.playerColors /
+ *   settings.playerTokens).  Falls back to sensible defaults when omitted.
+ */
+function createInitialPlayer(user, existingPlayers = [], config = null) {
+  let color = 'gray', colorHex = '#888888', token = '🎲';
+
+  if (config?.settings) {
+    const usedColors = new Set(existingPlayers.map(p => p.color));
+    const colorObj   = config.settings.playerColors?.find(c => !usedColors.has(c.id));
+    if (colorObj) { color = colorObj.id; colorHex = colorObj.hex; }
+    token = config.settings.playerTokens?.[existingPlayers.length] ?? '🎲';
+  }
+
+  return {
+    userId:     user.id,
+    username:   user.username,
+    active:     true,
+    color,
+    colorHex,
+    token,
+    position:   0,
+    money:      0,
+    inJail:     false,
+    jailTurns:  0,
+    jailCards:  0,
+    isBankrupt: false,
+    connected:  true,
+  };
+}
+
+/**
+ * Single entry-point for all player actions — implements the interface contract.
+ * Routes to the appropriate internal function and returns { state, events, error? }.
+ */
+function applyAction(state, userId, action, payload = {}) {
+  switch (action) {
+    case 'rollDice':         return rollDice(state, userId);
+    case 'buyProperty':      return buyProperty(state, userId);
+    case 'declinePurchase':  return declinePurchase(state, userId);
+    case 'placeBid':         return placeBid(state, userId, payload.amount);
+    case 'passAuction':      return passAuction(state, userId);
+    case 'buildHouse':       return buildHouse(state, userId, payload.position);
+    case 'sellHouse':        return sellHouse(state, userId, payload.position);
+    case 'mortgageProperty':   return mortgageProperty(state, userId, payload.position);
+    case 'unmortgageProperty': return unmortgageProperty(state, userId, payload.position);
+    case 'payJailFine':      return payJailFine(state, userId);
+    case 'useJailCard':      return useJailCard(state, userId);
+    case 'endTurn':          return endTurn(state, userId);
+    case 'offerTrade':
+      return offerTrade(
+        state, userId,
+        payload.toUserId,
+        payload.offerMoney   || 0,
+        payload.offerProps   || [],
+        payload.offerCards   || 0,
+        payload.requestMoney || 0,
+        payload.requestProps || [],
+        payload.requestCards || 0,
+      );
+    case 'acceptTrade':  return acceptTrade(state, userId);
+    case 'rejectTrade':  return rejectTrade(state, userId);
+    case 'cancelTrade':  return cancelTrade(state, userId);
+    case 'declareBankruptcy': {
+      const playerIdx = state.players.findIndex(p => p.userId === userId);
+      if (playerIdx < 0) return { state, events: [], error: 'Player not found' };
+      return declareBankruptcy(state, playerIdx, null);
+    }
+    case 'skipTurn': return skipTurn(state, userId);
+    default:
+      return { state, events: [], error: `Unknown action: ${action}` };
+  }
+}
+
+/** Return { userId, username } of the active player, or null if game is over. */
+function getCurrentPlayer(state) {
+  if (state.status !== 'playing') return null;
+  const cur = state.players[state.turnState?.currentPlayerIndex];
+  if (!cur || cur.isBankrupt) return null;
+  return { userId: cur.userId, username: cur.username };
+}
+
+/**
+ * Return true when the turn timer should NOT fire — i.e. during an auction
+ * where all players bid simultaneously and skipping one turn makes no sense.
+ */
+function isTurnTimerBlocked(state) {
+  return state.turnState?.phase === 'auctioning';
+}
+
+/**
+ * Return the set of actions the given player may legally perform right now.
+ * Used by the client to enable/disable action buttons.
+ * This is advisory — the server still validates every action independently.
+ */
+function getValidActions(state, userId) {
+  if (state.status !== 'playing') return [];
+
+  const player = state.players.find(p => p.userId === userId);
+  if (!player || player.isBankrupt) return [];
+
+  const cur   = state.players[state.turnState.currentPlayerIndex];
+  const isMyTurn = cur && cur.userId === userId;
+  const phase = state.turnState.phase;
+  const actions = new Set();
+
+  if (phase === 'auctioning') {
+    // All active players may bid or pass during an auction
+    actions.add('placeBid');
+    actions.add('passAuction');
+  }
+
+  // Incoming trade response (any player)
+  if (state.trade?.status === 'pending' && state.trade.toUserId === userId) {
+    actions.add('acceptTrade');
+    actions.add('rejectTrade');
+  }
+
+  if (!isMyTurn) return [...actions];
+
+  // ── actions only available on your own turn ──────────────────────────────
+
+  if (phase === 'pre-roll') {
+    if (player.inJail) {
+      if (player.money >= state.config.settings.jailFine) actions.add('payJailFine');
+      if (player.jailCards > 0)                           actions.add('useJailCard');
+      // Still allowed to roll (may escape jail with doubles)
+    }
+    actions.add('rollDice');
+    actions.add('offerTrade');
+    actions.add('declareBankruptcy');
+    // Property management is allowed before rolling
+    _addPropertyManagementActions(state, userId, actions);
+  }
+
+  if (phase === 'buying') {
+    const prop = state.properties[cur.position];
+    const sq   = state.config.board[cur.position];
+    if (prop && !prop.ownerId && sq && player.money >= sq.price) actions.add('buyProperty');
+    actions.add('declinePurchase');
+  }
+
+  if (phase === 'post-roll') {
+    actions.add('endTurn');
+    actions.add('offerTrade');
+    actions.add('declareBankruptcy');
+    _addPropertyManagementActions(state, userId, actions);
+    // Allow cancelling an outgoing trade offer
+    if (state.trade?.status === 'pending' && state.trade.fromUserId === userId) {
+      actions.add('cancelTrade');
+    }
+  }
+
+  return [...actions];
+}
+
+function _addPropertyManagementActions(state, userId, actions) {
+  const myProps = Object.entries(state.properties)
+    .filter(([, p]) => p.ownerId === userId);
+
+  for (const [posStr, prop] of myProps) {
+    const sq  = state.config.board[Number(posStr)];
+    if (!prop.mortgaged && sq?.type === 'property' && hasMonopoly(state, userId, sq.colorGroup)) {
+      actions.add('buildHouse');
+    }
+    if (!prop.mortgaged && prop.houses > 0) {
+      actions.add('sellHouse');
+    }
+    if (!prop.mortgaged && prop.houses === 0) {
+      actions.add('mortgageProperty');
+    }
+    if (prop.mortgaged) {
+      actions.add('unmortgageProperty');
+    }
+  }
+}
+
+/** Static metadata about this game type. */
+function getGameMetadata() {
+  return {
+    name:        'Monopoly',
+    minPlayers:  2,
+    maxPlayers:  8,
+    description: 'Classic property trading board game for 2–8 players.',
+    icon:        '🎲',
+  };
+}
+
+/** Load and cache the game configuration from the standard config directory. */
+function loadConfig() {
+  return configLoader.loadConfig();
+}
+
+/** Return a deep copy of the config (safe to mutate for per-game overrides). */
+function getConfigCopy() {
+  return configLoader.getConfigCopy();
+}
+
+/**
+ * Monopoly has no hidden information — every player sees the full state.
+ * This identity implementation satisfies the optional interface method.
+ */
+function getStateForPlayer(state, _userId) {
+  return state;
+}
+
 module.exports = {
+  // ── GameLogic interface methods ──────────────────────────────────────────
   initGame,
+  createInitialPlayer,
+  applyAction,
+  skipTurn,
+  getCurrentPlayer,
+  isTurnTimerBlocked,
+  getValidActions,
+  getGameMetadata,
+  loadConfig,
+  getConfigCopy,
+  getStateForPlayer,
+
+  // ── Internal functions (kept for game-manager compatibility & tests) ─────
   rollDice,
   payJailFine,
   useJailCard,
@@ -1433,7 +1663,6 @@ module.exports = {
   rejectTrade,
   cancelTrade,
   declareBankruptcy,
-  skipTurn,
   calculateRent,
   playerNetWorth,
 };

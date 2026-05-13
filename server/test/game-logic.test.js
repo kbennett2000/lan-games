@@ -1,6 +1,6 @@
 'use strict';
 
-const gl = require('../src/game-logic');
+const gl = require('../games/monopoly/game-logic');
 const { makePlayer, makeState } = require('./fixtures');
 
 // ── helpers ───────────────────────────────────────────────────────────────────

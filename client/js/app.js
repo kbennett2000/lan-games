@@ -93,8 +93,36 @@
     const el   = document.getElementById('header-username');
     if (el && user) el.textContent = `👤 ${user.username}`;
     UIManager.showScreen('lobby-screen');
-    await refreshGameList();
+    await Promise.all([refreshGameList(), refreshGameTypes()]);
   }
+
+  async function refreshGameTypes() {
+    try {
+      const { types } = await API.getGameTypes();
+      const select = document.getElementById('game-type');
+      if (!select || !types) return;
+      select.innerHTML = '';
+      for (const t of types) {
+        const opt = document.createElement('option');
+        opt.value       = t.key;
+        opt.textContent = t.name || t.key;
+        select.appendChild(opt);
+      }
+      // Trigger visibility update for whichever type is now selected
+      updateMonopolyConfigVisibility(select.value);
+    } catch {
+      // If the endpoint fails, the default <option> from HTML stays
+    }
+  }
+
+  function updateMonopolyConfigVisibility(gameType) {
+    const section = document.getElementById('monopoly-config-section');
+    if (section) section.style.display = gameType === 'monopoly' ? '' : 'none';
+  }
+
+  document.getElementById('game-type').addEventListener('change', function () {
+    updateMonopolyConfigVisibility(this.value);
+  });
 
   async function refreshGameList() {
     const myUserId = GameState.getUser()?.id;
@@ -123,7 +151,7 @@
     }
     try {
       const { games: saved } = await API.listSavedGames();
-      UIManager.renderGameList(saved, 'saved-games-list', handleJoinGame, deleteOpts);
+      UIManager.renderGameList(saved, 'saved-games-list', handleRejoinGame, deleteOpts);
     } catch {}
   }
 
@@ -146,10 +174,12 @@
     e.preventDefault();
     UIManager.clearError('create-error');
 
-    const name = document.getElementById('game-name').value.trim();
+    const name     = document.getElementById('game-name').value.trim();
+    const gameType = document.getElementById('game-type').value || 'monopoly';
     if (!name) return UIManager.showError('create-error', 'Please enter a game name');
 
-    const configOverrides = {
+    // Monopoly-specific rule overrides — only collected when the game type supports them
+    const configOverrides = gameType === 'monopoly' ? {
       settings: {
         startingMoney:      Number(document.getElementById('cfg-starting-money').value),
         goSalary:           Number(document.getElementById('cfg-go-salary').value),
@@ -157,10 +187,10 @@
         freeParkingJackpot: document.getElementById('cfg-free-parking').checked,
         auctionEnabled:     document.getElementById('cfg-auction').checked,
       },
-    };
+    } : {};
 
     try {
-      const { gameId, state } = await API.createGame(name, configOverrides);
+      const { gameId, state } = await API.createGame(name, gameType, configOverrides);
       // state.createdBy is set by the server — no need to track it separately
       await joinWaitingRoom(gameId, state);
     } catch (err) {
@@ -209,7 +239,7 @@
   async function joinWaitingRoom(gameId, state) {
     GameState.setGameId(gameId);
 
-    if (state.status === 'playing') {
+    if (state.status === 'playing' || state.status === 'paused') {
       // Go straight to the game screen; enterGameScreen sets state internally.
       // Do NOT call GameState.setState here first — that would fire onChange which
       // also calls enterGameScreen (before showScreen runs), causing deep recursion.

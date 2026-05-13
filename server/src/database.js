@@ -43,6 +43,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS games (
     id          TEXT    PRIMARY KEY,
     name        TEXT    NOT NULL,
+    game_type   TEXT    NOT NULL DEFAULT 'monopoly',
     status      TEXT    NOT NULL DEFAULT 'waiting',
     -- status values: waiting | playing | paused | finished
     created_by  TEXT    NOT NULL REFERENCES users(id),
@@ -60,6 +61,19 @@ db.exec(`
   );
 `);
 
+// ── migrations ────────────────────────────────────────────────────────────────
+// Safe ALTER TABLE for columns added after the initial schema deployment.
+// PRAGMA table_info returns one row per column; we check by name so this is
+// idempotent — running it against a fresh DB (which already has the column)
+// is a no-op.
+
+{
+  const gameColumns = db.pragma('table_info(games)').map(c => c.name);
+  if (!gameColumns.includes('game_type')) {
+    db.exec(`ALTER TABLE games ADD COLUMN game_type TEXT NOT NULL DEFAULT 'monopoly'`);
+  }
+}
+
 // ── prepared statements ──────────────────────────────────────────────────────
 
 const stmts = {
@@ -70,15 +84,15 @@ const stmts = {
 
   // Games
   insertGame: db.prepare(`
-    INSERT INTO games (id, name, status, created_by, created_at, updated_at, state, config)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO games (id, name, game_type, status, created_by, created_at, updated_at, state, config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   updateGame: db.prepare(`
     UPDATE games SET status = ?, updated_at = ?, state = ? WHERE id = ?
   `),
   getGameById: db.prepare('SELECT * FROM games WHERE id = ?'),
   listOpenGames: db.prepare(`
-    SELECT g.id, g.name, g.status, g.created_at, g.created_by,
+    SELECT g.id, g.name, g.game_type, g.status, g.created_at, g.created_by,
            u.username AS host_username,
            COUNT(gp.user_id) AS player_count
     FROM   games g
@@ -89,7 +103,7 @@ const stmts = {
     ORDER  BY g.created_at DESC
   `),
   listSavedGamesForUser: db.prepare(`
-    SELECT g.id, g.name, g.status, g.created_at, g.updated_at, g.created_by,
+    SELECT g.id, g.name, g.game_type, g.status, g.created_at, g.updated_at, g.created_by,
            u.username AS host_username,
            (SELECT COUNT(*) FROM game_players gp2 WHERE gp2.game_id = g.id) AS player_count
     FROM   games g
@@ -100,7 +114,7 @@ const stmts = {
     ORDER  BY g.updated_at DESC
   `),
   listActiveGamesForUser: db.prepare(`
-    SELECT g.id, g.name, g.status, g.created_at, g.updated_at, g.created_by,
+    SELECT g.id, g.name, g.game_type, g.status, g.created_at, g.updated_at, g.created_by,
            u.username AS host_username,
            (SELECT COUNT(*) FROM game_players gp2 WHERE gp2.game_id = g.id) AS player_count
     FROM   games g
@@ -146,9 +160,9 @@ module.exports = {
 
   // ── games ──
 
-  createGame(id, name, createdBy, state, config) {
+  createGame(id, name, createdBy, state, config, gameType = 'monopoly') {
     const now = Date.now();
-    stmts.insertGame.run(id, name, 'waiting', createdBy, now, now, JSON.stringify(state), JSON.stringify(config));
+    stmts.insertGame.run(id, name, gameType, 'waiting', createdBy, now, now, JSON.stringify(state), JSON.stringify(config));
   },
 
   updateGame(id, status, state) {

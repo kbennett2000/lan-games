@@ -201,6 +201,16 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 }
 .game-card-info h4 { font-size: 15px; margin-bottom: 2px; }
 .game-card-info p  { font-size: 12px; color: var(--text-muted); }
+.game-type-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  text-transform: capitalize;
+  margin-top: 3px;
+}
 .game-card-status {
   font-size: 11px;
   padding: 3px 8px;

@@ -3,7 +3,12 @@
  *
  * Manages the lifecycle of all active game sessions.  Keeps an in-memory
  * map of running games (GameState objects) and syncs them to the database
- * when they change.  All game logic is delegated to game-logic.js.
+ * when they change.
+ *
+ * This module is intentionally game-agnostic: all game-specific behaviour is
+ * delegated to the appropriate game-logic module via game-registry.js.
+ * The only Monopoly-specific string that appears here is the default value
+ * 'monopoly' used when a game record predates the gameType column.
  *
  * The singleton pattern is intentional — Node.js modules are cached after
  * the first require(), so all parts of the server share the same instance.
@@ -11,10 +16,14 @@
 
 'use strict';
 
-const { v4: uuidv4 }    = require('uuid');
-const database           = require('./database');
-const { getConfigCopy }  = require('./config-loader');
-const gameLogic          = require('./game-logic');
+const { v4: uuidv4 }  = require('uuid');
+const database        = require('./database');
+const gameRegistry    = require('./game-registry');
+
+/** Return the game-logic module for a given state (falls back to monopoly). */
+function getLogic(state) {
+  return gameRegistry.getGameLogic(state?.gameType || 'monopoly');
+}
 
 // ── in-memory store ──────────────────────────────────────────────────────────
 
@@ -32,46 +41,39 @@ function persist(state) {
 /**
  * Create a brand-new game in 'waiting' state.
  *
- * @param {string}  name       Human-readable game name
- * @param {string}  hostUserId UUID of the creating user
- * @param {object}  [configOverrides]  Optional overrides to merge into config
+ * @param {string} name           Human-readable game name
+ * @param {string} hostUserId     UUID of the creating user
+ * @param {string} [gameType]     Registered game type key (default 'monopoly')
+ * @param {object} [configOverrides]  Optional overrides merged into the config
  * @returns {{ gameId, state }}
  */
-function createGame(name, hostUserId, configOverrides = {}) {
+function createGame(name, hostUserId, gameType = 'monopoly', configOverrides = {}) {
   const gameId = uuidv4();
-  const config = getConfigCopy();
+  const logic  = gameRegistry.getGameLogic(gameType);
+  const config = logic.getConfigCopy();
 
-  // Apply any per-game config overrides (e.g. rule tweaks sent from client)
-  if (configOverrides.settings) {
-    Object.assign(config.settings, configOverrides.settings);
-  }
-  if (configOverrides.board) {
-    config.board = configOverrides.board;
-  }
-  if (configOverrides.cards) {
-    if (configOverrides.cards.chance)        config.cards.chance        = configOverrides.cards.chance;
-    if (configOverrides.cards.communityChest) config.cards.communityChest = configOverrides.cards.communityChest;
-  }
+  // Merge per-game rule tweaks sent from the client
+  if (configOverrides.settings)              Object.assign(config.settings, configOverrides.settings);
+  if (configOverrides.board)                 config.board = configOverrides.board;
+  if (configOverrides.cards?.chance)         config.cards.chance = configOverrides.cards.chance;
+  if (configOverrides.cards?.communityChest) config.cards.communityChest = configOverrides.cards.communityChest;
 
-  // Placeholder state (no players yet — they join before starting)
+  const { minPlayers, maxPlayers } = logic.getGameMetadata();
+
+  // Minimal waiting-room state — no game-specific fields yet
   const placeholderState = {
     id:        gameId,
     name,
-    createdBy: hostUserId,  // embedded so all clients can derive host status
+    gameType,
+    createdBy: hostUserId,
     status:    'waiting',
     config,
+    minPlayers,
+    maxPlayers,
     players:   [],
-    properties: {},
-    turnState:  null,
-    auction:    null,
-    trade:      null,
-    chanceDeck: [],
-    chestDeck:  [],
-    freeParking: 0,
-    log: [],
   };
 
-  database.createGame(gameId, name, hostUserId, placeholderState, config);
+  database.createGame(gameId, name, hostUserId, placeholderState, config, gameType);
   database.addPlayerToGame(gameId, hostUserId);
   activeGames.set(gameId, placeholderState);
 
@@ -90,10 +92,13 @@ function loadGame(gameId) {
   const row = database.getGameById(gameId);
   if (!row) return null;
 
-  // Back-fill createdBy from the DB column for games saved before this field
-  // was embedded in the state JSON.
+  // Back-fill fields from DB columns for games saved before they were
+  // embedded in the state JSON.
   if (!row.state.createdBy && row.created_by) {
     row.state.createdBy = row.created_by;
+  }
+  if (!row.state.gameType && row.game_type) {
+    row.state.gameType = row.game_type;
   }
 
   activeGames.set(gameId, row.state);
@@ -116,40 +121,27 @@ function listOpenGames() {
 
 /**
  * Add a player to the waiting-room player list.
- * Called when a user joins a game that hasn't started yet.
+ *
+ * @param {string} gameId
+ * @param {Object} user   - { id, username } from the auth system
  */
-function addPlayerToLobby(gameId, userId, username) {
+function addPlayerToLobby(gameId, user) {
   const state = getGame(gameId);
   if (!state) return { error: 'Game not found' };
   if (state.status !== 'waiting') return { error: 'Game already in progress' };
-  if (state.players.length >= state.config.settings.maxPlayers) {
-    return { error: 'Game is full' };
+
+  const logic = getLogic(state);
+  const { maxPlayers } = logic.getGameMetadata();
+  if (state.players.length >= maxPlayers) return { error: 'Game is full' };
+
+  if (state.players.find(p => p.userId === user.id)) {
+    return { state }; // idempotent
   }
-  if (state.players.find(p => p.userId === userId)) {
-    return { state }; // already in lobby — idempotent
-  }
 
-  // Assign a color and token from the config
-  const usedColors = new Set(state.players.map(p => p.color));
-  const color = state.config.settings.playerColors.find(c => !usedColors.has(c.id));
-  const token = state.config.settings.playerTokens[state.players.length] || '🎲';
+  const player = logic.createInitialPlayer(user, state.players, state.config);
+  state.players.push(player);
 
-  state.players.push({
-    userId,
-    username,
-    color:     color ? color.id : 'gray',
-    colorHex:  color ? color.hex : '#999',
-    token,
-    position:  0,
-    money:     0, // set properly when game starts
-    inJail:    false,
-    jailTurns: 0,
-    jailCards: 0,
-    isBankrupt: false,
-    connected: true,
-  });
-
-  database.addPlayerToGame(gameId, userId);
+  database.addPlayerToGame(gameId, user.id);
   persist(state);
 
   return { state };
@@ -182,20 +174,15 @@ function startGame(gameId, hostUserId) {
   const dbGame = database.getGameById(gameId);
   if (dbGame.created_by !== hostUserId) return { error: 'Only the host can start the game' };
 
-  if (state.players.length < state.config.settings.minPlayersToStart) {
-    return { error: `Need at least ${state.config.settings.minPlayersToStart} players to start` };
+  const logic = getLogic(state);
+  const { minPlayers } = logic.getGameMetadata();
+  if (state.players.length < minPlayers) {
+    return { error: `Need at least ${minPlayers} players to start` };
   }
 
-  const playerList = state.players.map(p => ({
-    userId:   p.userId,
-    username: p.username,
-    color:    p.color,
-    colorHex: p.colorHex,
-    token:    p.token,
-  }));
-
-  const newState = gameLogic.initGame(gameId, state.name, playerList, state.config);
-  newState.createdBy = state.createdBy || hostUserId; // carry host identity forward
+  const newState = logic.initGame(gameId, state.name, state.players, state.config);
+  newState.createdBy = state.createdBy || hostUserId;
+  newState.gameType  = state.gameType  || 'monopoly';
   activeGames.set(gameId, newState);
   persist(newState);
 
@@ -218,102 +205,12 @@ function applyAction(gameId, userId, action, payload = {}) {
   if (!state) return { state: null, events: [], error: 'Game not found' };
   if (state.status !== 'playing') return { state, events: [], error: 'Game is not in playing state' };
 
-  let result;
-
-  switch (action) {
-    case 'rollDice':
-      result = gameLogic.rollDice(state, userId);
-      break;
-
-    case 'buyProperty':
-      result = gameLogic.buyProperty(state, userId);
-      break;
-
-    case 'declinePurchase':
-      result = gameLogic.declinePurchase(state, userId);
-      break;
-
-    case 'placeBid':
-      result = gameLogic.placeBid(state, userId, payload.amount);
-      break;
-
-    case 'passAuction':
-      result = gameLogic.passAuction(state, userId);
-      break;
-
-    case 'buildHouse':
-      result = gameLogic.buildHouse(state, userId, payload.position);
-      break;
-
-    case 'sellHouse':
-      result = gameLogic.sellHouse(state, userId, payload.position);
-      break;
-
-    case 'mortgageProperty':
-      result = gameLogic.mortgageProperty(state, userId, payload.position);
-      break;
-
-    case 'unmortgageProperty':
-      result = gameLogic.unmortgageProperty(state, userId, payload.position);
-      break;
-
-    case 'payJailFine':
-      result = gameLogic.payJailFine(state, userId);
-      break;
-
-    case 'useJailCard':
-      result = gameLogic.useJailCard(state, userId);
-      break;
-
-    case 'endTurn':
-      result = gameLogic.endTurn(state, userId);
-      break;
-
-    case 'offerTrade':
-      result = gameLogic.offerTrade(
-        state, userId,
-        payload.toUserId,
-        payload.offerMoney    || 0,
-        payload.offerProps    || [],
-        payload.offerCards    || 0,
-        payload.requestMoney  || 0,
-        payload.requestProps  || [],
-        payload.requestCards  || 0,
-      );
-      break;
-
-    case 'acceptTrade':
-      result = gameLogic.acceptTrade(state, userId);
-      break;
-
-    case 'rejectTrade':
-      result = gameLogic.rejectTrade(state, userId);
-      break;
-
-    case 'cancelTrade':
-      result = gameLogic.cancelTrade(state, userId);
-      break;
-
-    case 'declareBankruptcy': {
-      const playerIdx = state.players.findIndex(p => p.userId === userId);
-      if (playerIdx < 0) return { state, events: [], error: 'Player not found' };
-      result = gameLogic.declareBankruptcy(state, playerIdx, null);
-      break;
-    }
-
-    case 'skipTurn':
-      result = gameLogic.skipTurn(state, userId);
-      break;
-
-    default:
-      return { state, events: [], error: `Unknown action: ${action}` };
-  }
+  const result = getLogic(state).applyAction(state, userId, action, payload);
 
   if (result.error) {
     return { state, events: [], error: result.error };
   }
 
-  // Update in-memory state and persist to DB
   activeGames.set(gameId, result.state);
   persist(result.state);
 
@@ -333,6 +230,16 @@ function deleteGame(gameId, userId) {
   activeGames.delete(gameId);
   database.deleteGame(gameId);
   return { success: true };
+}
+
+/**
+ * Resume a paused game, setting its status back to 'playing'.
+ */
+function resumeGame(gameId) {
+  const state = getGame(gameId);
+  if (!state || state.status !== 'paused') return;
+  state.status = 'playing';
+  persist(state);
 }
 
 /**
@@ -382,6 +289,7 @@ module.exports = {
   applyAction,
   deleteGame,
   saveGame,
+  resumeGame,
   setPlayerConnected,
   evictGame,
 };

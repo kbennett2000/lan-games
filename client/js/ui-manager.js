@@ -303,6 +303,7 @@ const UIManager = (() => {
     for (const g of games) {
       const statusLabel = { waiting: 'Open', playing: 'In Progress', paused: 'Saved', finished: 'Finished' }[g.status] || g.status;
       const statusClass = { waiting: 'status-waiting', playing: 'status-playing', paused: 'status-paused' }[g.status] || '';
+      const gameType    = g.game_type || g.gameType || 'monopoly';
 
       const card = document.createElement('div');
       card.className = 'game-card';
@@ -310,6 +311,7 @@ const UIManager = (() => {
         <div class="game-card-info">
           <h4>${escHtml(g.name)}</h4>
           <p>Host: ${escHtml(g.host_username || g.hostUsername || '?')} · ${g.player_count || g.playerCount || 0} player(s)</p>
+          <span class="game-type-badge">${escHtml(gameType)}</span>
         </div>
         <span class="game-card-status ${statusClass}">${statusLabel}</span>
       `;
@@ -360,7 +362,7 @@ const UIManager = (() => {
     const startBtn  = document.getElementById('start-game-btn');
     const hintEl    = document.getElementById('waiting-hint');
     const isHost    = myUserId === hostUserId;
-    const minReady  = state.config?.settings?.minPlayersToStart ?? 2;
+    const minReady  = state.minPlayers ?? state.config?.settings?.minPlayersToStart ?? 2;
 
     if (startBtn) {
       startBtn.style.display = isHost ? 'inline-flex' : 'none';

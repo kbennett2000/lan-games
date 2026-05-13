@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Monopoly</title>
+  <title>LAN Games</title>
   <link rel="stylesheet" href="/css/main.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="auth-screen" class="screen active">
   <div class="auth-container">
-    <h1 class="auth-title">🎲 Monopoly</h1>
+    <h1 class="auth-title">🎲 LAN Games</h1>
     <p class="auth-subtitle">Multiplayer · Local Network</p>
 
     <div class="tab-bar">
@@ -56,7 +56,7 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
 <div id="lobby-screen" class="screen">
   <header class="lobby-header">
-    <h1 class="logo">🎲 Monopoly</h1>
+    <h1 class="logo">🎲 LAN Games</h1>
     <div class="header-user">
       <span id="header-username"></span>
       <button id="logout-btn" class="btn btn-sm btn-outline">Sign Out</button>
@@ -97,7 +97,14 @@
           <input id="game-name" type="text" placeholder="e.g. Friday Night Game" maxlength="64" required>
         </div>
 
-        <div class="config-section">
+        <div class="form-group">
+          <label for="game-type">Game type</label>
+          <select id="game-type">
+            <option value="monopoly">Monopoly</option>
+          </select>
+        </div>
+
+        <div class="config-section" id="monopoly-config-section">
           <button type="button" class="collapsible-btn" id="toggle-config">
             ▶ Customize Rules
           </button>

@@ -81,8 +81,8 @@ const API = (() => {
     return request('DELETE', `/api/games/${gameId}`);
   }
 
-  async function createGame(name, configOverrides = {}) {
-    return post('/api/games', { name, configOverrides });
+  async function createGame(name, gameType = 'monopoly', configOverrides = {}) {
+    return post('/api/games', { name, gameType, configOverrides });
   }
 
   async function joinGame(gameId) {
@@ -101,7 +101,15 @@ const API = (() => {
     return post(`/api/games/${gameId}/save`);
   }
 
-  // ── config ─────────────────────────────────────────────────────────────────
+  // ── game types & config ────────────────────────────────────────────────────
+
+  async function getGameTypes() {
+    return get('/api/games/types');
+  }
+
+  async function getGameTypeConfig(gameType) {
+    return get(`/api/games/types/${encodeURIComponent(gameType)}/config`);
+  }
 
   async function getDefaultConfig() {
     return get('/api/games/config/default');
@@ -114,7 +122,7 @@ const API = (() => {
     register, login, logout, getMe,
     listGames, listSavedGames, listMyActiveGames, deleteGame,
     createGame, joinGame, getGame, startGame, saveGame,
-    getDefaultConfig,
+    getGameTypes, getGameTypeConfig, getDefaultConfig,
   };
 
 })();

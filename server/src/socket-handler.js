@@ -2,6 +2,8 @@
  * socket-handler.js
  *
  * Wires all Socket.io real-time events for game play.
+ * Game-agnostic: all game-specific behaviour is delegated to the game-logic
+ * module selected by game-registry based on the game's gameType field.
  *
  * Connection lifecycle
  * ────────────────────
@@ -12,31 +14,17 @@
  *
  * In-game events (client → server)
  * ──────────────────────────────────
- *   game:start         host starts the game
- *   turn:rollDice
- *   turn:buyProperty
- *   turn:declinePurchase
- *   turn:auction:bid   { amount }
- *   turn:auction:pass
- *   turn:buildHouse    { position }
- *   turn:sellHouse     { position }
- *   turn:mortgage      { position }
- *   turn:unmortgage    { position }
- *   turn:payJailFine
- *   turn:useJailCard
- *   turn:endTurn
- *   trade:offer        { toUserId, offerMoney, offerProps, offerCards, requestMoney, requestProps, requestCards }
- *   trade:accept
- *   trade:reject
- *   trade:cancel
+ *   game:start              host starts the game
+ *   game:action  { action, ...payload }  any player action (roll, buy, trade, …)
  *   game:save
- *   chat:message       { text }
+ *   chat:message { text }
  *
  * Server → client broadcasts (to the game room)
  * ───────────────────────────────────────────────
  *   game:state         full GameState (on join)
  *   game:update        { state, events[] }  after every action
  *   game:error         { message }  (to the acting socket only)
+ *   trade:incoming     { from, payload }  targeted to the trade recipient
  *   chat:message       { username, text, timestamp }
  */
 
@@ -44,10 +32,12 @@
 
 const { authenticateSocket } = require('./auth');
 const gameManager             = require('./game-manager');
-const database                = require('./database');
+const gameRegistry            = require('./game-registry');
 
 // Track which socket is in which game room: Map<socketId, gameId>
 const socketGameMap = new Map();
+// Track each user's active socket for targeted emissions: Map<userId, socketId>
+const userSocketMap = new Map();
 
 // ── turn timeout ──────────────────────────────────────────────────────────────
 // When a player disconnects mid-turn, auto-skip after TURN_TIMEOUT_MS.
@@ -58,16 +48,18 @@ const turnTimers = new Map(); // key: `${gameId}:${userId}` → timer handle
 function scheduleTurnTimeout(io, gameId, userId, username) {
   const key = `${gameId}:${userId}`;
   clearTurnTimeout(key);
-  // Notify the room that a countdown has started
   io.to(gameId).emit('game:turn_warning', { username, secondsRemaining: TURN_TIMEOUT_MS / 1000 });
   turnTimers.set(key, setTimeout(() => {
     turnTimers.delete(key);
     const state = gameManager.getGame(gameId);
     if (!state || state.status !== 'playing') return;
-    const cur = state.players[state.turnState.currentPlayerIndex];
-    // Only fire if it's still their disconnected turn and not mid-auction
-    if (!cur || cur.userId !== userId || cur.connected) return;
-    if (state.turnState.phase === 'auctioning') return;
+    const logic = gameRegistry.getGameLogic(state.gameType || 'monopoly');
+    const cur   = logic.getCurrentPlayer(state);
+    // Only fire if it's still this player's turn and they're still disconnected
+    if (!cur || cur.userId !== userId) return;
+    const player = state.players.find(p => p.userId === userId);
+    if (player?.connected) return;
+    if (logic.isTurnTimerBlocked(state)) return;
     const result = gameManager.applyAction(gameId, userId, 'skipTurn', {});
     if (!result.error) {
       io.to(gameId).emit('game:update', { state: result.state, events: result.events });
@@ -114,6 +106,7 @@ function registerHandlers(io) {
     }
 
     console.log(`[socket] ${currentUser.username} connected (${socket.id})`);
+    userSocketMap.set(currentUser.sub, socket.id);
 
     // ── join game room ───────────────────────────────────────────────────────
 
@@ -137,12 +130,17 @@ function registerHandlers(io) {
       // joining via REST + socket (the normal flow) always results in a
       // consistent player list broadcast to everyone already in the room.
       if (state.status === 'waiting') {
-        gameManager.addPlayerToLobby(gameId, currentUser.sub, currentUser.username);
+        gameManager.addPlayerToLobby(gameId, { id: currentUser.sub, username: currentUser.username });
       }
 
       gameManager.setPlayerConnected(gameId, currentUser.sub, true);
       // Cancel any pending turn-skip timer now that this player is back
       clearTurnTimeout(`${gameId}:${currentUser.sub}`);
+
+      // Auto-resume paused (saved) games when a player rejoins
+      if (state.status === 'paused') {
+        gameManager.resumeGame(gameId);
+      }
 
       // Always read the freshest state after the mutations above
       const latestState = gameManager.getGame(gameId);
@@ -183,6 +181,13 @@ function registerHandlers(io) {
 
     socket.on('disconnect', () => {
       console.log(`[socket] ${currentUser.username} disconnected (${socket.id})`);
+
+      // Only remove from userSocketMap if this socket is still the active one
+      // (a reconnect may have already registered a new socketId for this user)
+      if (userSocketMap.get(currentUser.sub) === socket.id) {
+        userSocketMap.delete(currentUser.sub);
+      }
+
       const gameId = socketGameMap.get(socket.id);
       if (gameId) {
         socketGameMap.delete(socket.id);
@@ -194,38 +199,16 @@ function registerHandlers(io) {
           events: [{ type: 'PLAYER_DISCONNECTED', data: { username: currentUser.username }, timestamp: Date.now() }],
         });
 
-        // If this player was in the middle of their turn, start the skip timer
-        if (state && state.status === 'playing' && state.turnState) {
-          const cur = state.players[state.turnState.currentPlayerIndex];
-          if (cur && cur.userId === currentUser.sub && state.turnState.phase !== 'auctioning') {
+        // If it was this player's turn, start the auto-skip countdown
+        if (state && state.status === 'playing') {
+          const logic = gameRegistry.getGameLogic(state.gameType || 'monopoly');
+          const cur   = logic.getCurrentPlayer(state);
+          if (cur?.userId === currentUser.sub && !logic.isTurnTimerBlocked(state)) {
             scheduleTurnTimeout(io, gameId, currentUser.sub, currentUser.username);
           }
         }
       }
     });
-
-    // ── helper: dispatch a game action and broadcast result ──────────────────
-
-    function dispatchAction(action, payload = {}) {
-      const gameId = socketGameMap.get(socket.id);
-      if (!gameId) {
-        socket.emit('game:error', { message: 'You are not in a game' });
-        return;
-      }
-
-      const result = gameManager.applyAction(gameId, currentUser.sub, action, payload);
-
-      if (result.error) {
-        socket.emit('game:error', { message: result.error });
-        return;
-      }
-
-      // Broadcast updated state + events to everyone in the room
-      io.to(gameId).emit('game:update', {
-        state:  result.state,
-        events: result.events,
-      });
-    }
 
     // ── game start ───────────────────────────────────────────────────────────
 
@@ -248,7 +231,7 @@ function registerHandlers(io) {
     // ── join lobby ───────────────────────────────────────────────────────────
 
     socket.on('lobby:join', (gameId, ack) => {
-      const result = gameManager.addPlayerToLobby(gameId, currentUser.sub, currentUser.username);
+      const result = gameManager.addPlayerToLobby(gameId, { id: currentUser.sub, username: currentUser.username });
       if (result.error) return ack?.({ error: result.error });
 
       socket.join(gameId);
@@ -262,45 +245,39 @@ function registerHandlers(io) {
       ack?.({ success: true, state: result.state });
     });
 
-    // ── turn actions ─────────────────────────────────────────────────────────
+    // ── game action (single generic handler for all player actions) ──────────
 
-    socket.on('turn:rollDice',       ()        => dispatchAction('rollDice'));
-    socket.on('turn:buyProperty',    ()        => dispatchAction('buyProperty'));
-    socket.on('turn:declinePurchase',()        => dispatchAction('declinePurchase'));
-    socket.on('turn:auction:bid',    (payload) => dispatchAction('placeBid', payload));
-    socket.on('turn:auction:pass',   ()        => dispatchAction('passAuction'));
-    socket.on('turn:buildHouse',     (payload) => dispatchAction('buildHouse', payload));
-    socket.on('turn:sellHouse',      (payload) => dispatchAction('sellHouse', payload));
-    socket.on('turn:mortgage',       (payload) => dispatchAction('mortgageProperty', payload));
-    socket.on('turn:unmortgage',     (payload) => dispatchAction('unmortgageProperty', payload));
-    socket.on('turn:payJailFine',    ()        => dispatchAction('payJailFine'));
-    socket.on('turn:useJailCard',    ()        => dispatchAction('useJailCard'));
-    socket.on('turn:endTurn',        ()        => dispatchAction('endTurn'));
+    socket.on('game:action', (payload) => {
+      const { action, ...data } = payload || {};
+      if (!action) {
+        socket.emit('game:error', { message: 'Missing action type' });
+        return;
+      }
 
-    // ── trade events ─────────────────────────────────────────────────────────
-
-    socket.on('trade:offer', (payload) => {
-      dispatchAction('offerTrade', payload);
-      // Also send a targeted notification to the trade recipient
       const gameId = socketGameMap.get(socket.id);
-      if (!gameId || !payload.toUserId) return;
-      // Find the recipient's socket
-      const recipientSocketId = findSocketForUser(payload.toUserId, gameId);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit('trade:incoming', {
-          from: currentUser.username,
-          payload,
-        });
+      if (!gameId) {
+        socket.emit('game:error', { message: 'Not in a game' });
+        return;
+      }
+
+      const result = gameManager.applyAction(gameId, currentUser.sub, action, data);
+
+      if (result.error) {
+        socket.emit('game:error', { message: result.error });
+        return;
+      }
+
+      io.to(gameId).emit('game:update', { state: result.state, events: result.events });
+
+      // If the action resulted in a trade offer, notify the recipient directly
+      const tradeEvent = result.events?.find(e => e.type === 'TRADE_OFFERED');
+      if (tradeEvent && data.toUserId) {
+        const recipientSid = userSocketMap.get(data.toUserId);
+        if (recipientSid) {
+          io.to(recipientSid).emit('trade:incoming', { from: currentUser.username, payload: data });
+        }
       }
     });
-
-    socket.on('trade:accept',  () => dispatchAction('acceptTrade'));
-    socket.on('trade:reject',  () => dispatchAction('rejectTrade'));
-    socket.on('trade:cancel',  () => dispatchAction('cancelTrade'));
-
-    // ── bankruptcy ───────────────────────────────────────────────────────────
-
-    socket.on('game:bankruptcy', () => dispatchAction('declareBankruptcy'));
 
     // ── save game ────────────────────────────────────────────────────────────
 
@@ -337,17 +314,6 @@ function registerHandlers(io) {
 
   }); // end io.on('connection')
 
-  // ── helper to find socket id for a user in a game room ──────────────────
-
-  function findSocketForUser(userId, gameId) {
-    const room = io.sockets.adapter.rooms.get(gameId);
-    if (!room) return null;
-    for (const sid of room) {
-      const s = io.sockets.sockets.get(sid);
-      if (s && s._user?.sub === userId) return sid;
-    }
-    return null;
-  }
 }
 
 module.exports = { registerHandlers, broadcastLobbyUpdate };

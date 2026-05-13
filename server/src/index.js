@@ -25,13 +25,15 @@ const { Server: SocketIO } = require('socket.io');
 const authRoutes      = require('./routes/auth.routes');
 const gameRoutes      = require('./routes/game.routes');
 const socketHandler   = require('./socket-handler');
-const { loadConfig }  = require('./config-loader');
+const gameRegistry    = require('./game-registry');
 
-// ── validate config on startup ───────────────────────────────────────────────
+// ── validate all registered game configs on startup ──────────────────────────
 
 try {
-  loadConfig();
-  console.log('[config] Board, cards, and settings loaded successfully');
+  for (const key of gameRegistry.listGameTypes()) {
+    gameRegistry.getGameLogic(key).loadConfig();
+  }
+  console.log('[config] All game configs loaded successfully');
 } catch (err) {
   console.error('[config] FATAL — invalid config files:', err.message);
   process.exit(1);
@@ -52,11 +54,10 @@ app.use(cors({ origin: '*', credentials: true }));
 app.use('/api/auth',  authRoutes);
 app.use('/api/games', gameRoutes);
 
-// Config endpoint (convenience alias)
+// Config endpoint (convenience alias — monopoly default config)
 app.get('/api/config', (req, res) => {
   try {
-    const { getConfigCopy } = require('./config-loader');
-    res.json({ config: getConfigCopy() });
+    res.json({ config: gameRegistry.getGameLogic('monopoly').getConfigCopy() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

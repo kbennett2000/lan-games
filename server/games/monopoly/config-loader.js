@@ -18,7 +18,7 @@
 const path = require('path');
 const fs   = require('fs');
 
-const CONFIG_DIR = path.join(__dirname, '..', 'config');
+const CONFIG_DIR = path.join(__dirname, 'config');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

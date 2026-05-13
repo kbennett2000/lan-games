@@ -291,21 +291,25 @@ const SocketClient = (() => {
     socket.emit(event, data);
   }
 
+  function action(name, payload = {}) {
+    emit('game:action', { action: name, ...payload });
+  }
+
   function getActionHandlers() {
     return {
-      rollDice:           () => emit('turn:rollDice'),
-      buyProperty:        () => emit('turn:buyProperty'),
-      declinePurchase:    () => emit('turn:declinePurchase'),
-      placeBid:      (amt) => emit('turn:auction:bid', { amount: amt }),
-      passAuction:        () => emit('turn:auction:pass'),
-      endTurn:            () => emit('turn:endTurn'),
-      payJailFine:        () => emit('turn:payJailFine'),
-      useJailCard:        () => emit('turn:useJailCard'),
+      rollDice:           () => action('rollDice'),
+      buyProperty:        () => action('buyProperty'),
+      declinePurchase:    () => action('declinePurchase'),
+      placeBid:      (amt) => action('placeBid', { amount: amt }),
+      passAuction:        () => action('passAuction'),
+      endTurn:            () => action('endTurn'),
+      payJailFine:        () => action('payJailFine'),
+      useJailCard:        () => action('useJailCard'),
       openPropertyModal:  () => showMyPropertiesModal(),
       openTradeModal:     () => UIManager.showTradeModal(GameState.getState(), GameState.getUser()?.id),
       declareBankruptcy:  () => {
         if (confirm('Are you sure you want to declare bankruptcy? You will be eliminated from the game.')) {
-          emit('game:bankruptcy');
+          action('declareBankruptcy');
         }
       },
     };
@@ -313,10 +317,10 @@ const SocketClient = (() => {
 
   function getPropertyHandlers() {
     return {
-      buildHouse:         (pos) => emit('turn:buildHouse', { position: pos }),
-      sellHouse:          (pos) => emit('turn:sellHouse', { position: pos }),
-      mortgageProperty:   (pos) => emit('turn:mortgage', { position: pos }),
-      unmortgageProperty: (pos) => emit('turn:unmortgage', { position: pos }),
+      buildHouse:         (pos) => action('buildHouse', { position: pos }),
+      sellHouse:          (pos) => action('sellHouse', { position: pos }),
+      mortgageProperty:   (pos) => action('mortgageProperty', { position: pos }),
+      unmortgageProperty: (pos) => action('unmortgageProperty', { position: pos }),
     };
   }
 
@@ -368,10 +372,10 @@ const SocketClient = (() => {
 
   function sendChat(text) { emit('chat:message', { text }); }
 
-  function sendTrade(payload) { emit('trade:offer', payload); }
-  function acceptTrade()      { emit('trade:accept'); }
-  function rejectTrade()      { emit('trade:reject'); }
-  function cancelTrade()      { emit('trade:cancel'); }
+  function sendTrade(payload) { action('offerTrade', payload); }
+  function acceptTrade()      { action('acceptTrade'); }
+  function rejectTrade()      { action('rejectTrade'); }
+  function cancelTrade()      { action('cancelTrade'); }
 
   function onLobbyUpdate(fn) { _onLobbyUpdate = fn; }
 
