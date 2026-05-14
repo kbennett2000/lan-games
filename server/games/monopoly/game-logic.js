@@ -155,7 +155,7 @@ function hasMonopoly(state, userId, colorGroup) {
 function countBuildings(state, userId) {
   let houses = 0;
   let hotels = 0;
-  for (const [pos, propState] of Object.entries(state.properties)) {
+  for (const propState of Object.values(state.properties)) {
     if (propState.ownerId !== userId) continue;
     if (propState.houses === 5) hotels++;
     else houses += propState.houses;
@@ -409,11 +409,11 @@ function resolveCard(state, playerIdx, card) {
  *
  * @param {GameState} state         (already cloned by caller)
  * @param {number}    playerIdx
- * @param {object[]}  existingEvents  events array to append to
+ * @param {object[]}  _existingEvents  unused; callers collect returned newEvents themselves
  * @param {number}    [rentMultiplier=1]  for card-driven double-rent landings
  * @returns {{ state, newEvents }}
  */
-function processLanding(state, playerIdx, existingEvents = [], rentMultiplier = 1) {
+function processLanding(state, playerIdx, _existingEvents = [], rentMultiplier = 1) {
   const newEvents = [];
   const player    = state.players[playerIdx];
   const position  = player.position;
@@ -944,7 +944,7 @@ function passAuction(state, userId) {
   return { state, events };
 }
 
-function resolveAuction(state, existingEvents = []) {
+function resolveAuction(state, _existingEvents = []) {
   const newEvents = [];
   const { position, highBidder, highBid } = state.auction;
   const sq = state.config.board[position];

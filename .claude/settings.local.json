@@ -13,7 +13,9 @@
       "Bash(git -C /home/kb/Desktop/Projects/monopoly-cs commit -m ' *)",
       "Bash(npx jest *)",
       "Bash(npm --version)",
-      "Bash(node -e \"const e=require\\('eslint'\\); console.log\\(e.Linter.version ?? require\\('./node_modules/eslint/package.json'\\).version\\)\")"
+      "Bash(node -e \"const e=require\\('eslint'\\); console.log\\(e.Linter.version ?? require\\('./node_modules/eslint/package.json'\\).version\\)\")",
+      "Bash(awk 'NR>=1 && NR<=50')",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }
